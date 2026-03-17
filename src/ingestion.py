@@ -10,7 +10,7 @@ import os
 import httpx
 import asyncio
 import sys
-from src.config import RECEIVED_DATA_FILE, COUNTER_FILE
+from config import RECEIVED_DATA_FILE, COUNTER_FILE
 
 Data_file = RECEIVED_DATA_FILE
 Counter_file = COUNTER_FILE

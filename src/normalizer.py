@@ -3,7 +3,7 @@ import uuid
 import json
 import os
 from difflib import get_close_matches
-from src.config import RECEIVED_DATA_FILE, NORMALIZED_DATA_FILE
+from config import RECEIVED_DATA_FILE, NORMALIZED_DATA_FILE
 
 class AutonomousNormalizer:
     def __init__(self, similarity_threshold=0.85):

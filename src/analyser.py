@@ -3,7 +3,7 @@ import os
 import json
 from typing import Dict, Any, List
 from collections import defaultdict
-from src.config import DATA_DIR, NORMALIZED_DATA_FILE, ANALYZED_DATA_FILE
+from config import DATA_DIR, NORMALIZED_DATA_FILE, ANALYZED_DATA_FILE
 
 
 class DataAnalyzer:

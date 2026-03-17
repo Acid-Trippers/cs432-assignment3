@@ -8,7 +8,7 @@
 """
 
 import json
-from src.config import INITIAL_SCHEMA_FILE
+from config import INITIAL_SCHEMA_FILE
 
 defined_field_names = [
     "string", "integer", "float", "boolean", "object",
