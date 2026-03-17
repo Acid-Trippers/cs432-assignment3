@@ -3,6 +3,7 @@ import uuid
 import json
 import os
 from difflib import get_close_matches
+from src.config import RECEIVED_DATA_FILE, NORMALIZED_DATA_FILE
 
 class AutonomousNormalizer:
     def __init__(self, similarity_threshold=0.85):
@@ -76,7 +77,7 @@ class AutonomousNormalizer:
 
         self.tables[table_name].append(row)
 
-    def export(self, filename="normalized_data.json"):
+    def export(self, filename=NORMALIZED_DATA_FILE):
         output = {
             "metadata": {
                 "schema": self.schema,
@@ -91,7 +92,7 @@ class AutonomousNormalizer:
         print(f"[*] Data saved to {filename}")
 
 def run():
-    input_file = "received_data.json"
+    input_file = RECEIVED_DATA_FILE
     if not os.path.exists(input_file):
         print(f"[!] Error: {input_file} not found.")
         return

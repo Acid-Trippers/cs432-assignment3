@@ -7,6 +7,7 @@ import time
 import sys
 import os
 import shutil
+from src.config import RECEIVED_DATA_FILE, COUNTER_FILE, ANALYZED_SCHEMA_FILE
 
 def run_script(script_name, args):
     """Helper to run teammate's scripts or ingestion.py."""
@@ -42,12 +43,10 @@ async def main():
     try:
         if args.command == 'initialise':
             # Wipe local storage
-            files_to_clean = ["count.txt", "received_data.json"]
+            files_to_clean = [RECEIVED_DATA_FILE, COUNTER_FILE]
             for f in files_to_clean:
                 if os.path.exists(f):
                     os.remove(f)
-            if os.path.exists("counter.txt"):
-                os.remove("counter.txt")
             
             print("[!] Environment reset.")
             
@@ -60,11 +59,11 @@ async def main():
             # Just fetch more data
             run_script("ingestion", [str(args.records)])
 
-        if os.path.exists("count.txt"):
-            with open("count.txt", 'r') as f:
-                total = f.read().strip()
+        if os.path.exists(COUNTER_FILE):
+            with open(COUNTER_FILE, 'r') as f:
+                total = int(f.read().strip())
                 print(f"[*] Total records fetched across runs: {total}")
-                if total >= 1000 and not os.path.exists("analyzed_schema.json"):
+                if total >= 1000 and not os.path.exists(ANALYZED_SCHEMA_FILE):
                     print("[*] 1000 records reached! Ready for Analysis & Validation...")
                 # run_script("analyzer")
                 # run_script("validation")

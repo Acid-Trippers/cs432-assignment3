@@ -8,6 +8,7 @@
 """
 
 import json
+from src.config import INITIAL_SCHEMA_FILE
 
 defined_field_names = [
     "string", "integer", "float", "boolean", "object",
@@ -85,11 +86,11 @@ def take_user_input():
     final_json = json.dumps(schema_properties, indent=4)
     print(final_json)
     
-    with open('initial_schema.json', 'w') as f:
+    with open(INITIAL_SCHEMA_FILE, 'w') as f:
         json.dump(schema_properties, f, indent=4)
 
 def modify():
-    with open('initial_schema.json', 'r') as f:
+    with open(INITIAL_SCHEMA_FILE, 'r') as f:
         data = json.load(f)
         print(data)
         
@@ -109,7 +110,7 @@ def modify():
                 print("Current field:", field_name)
                 del data[field_name]
                 print(f"sucessfully deleted the field: {field_name}")
-                with open('initial_schema.json', 'w') as f:
+                with open(INITIAL_SCHEMA_FILE, 'w') as f:
                     json.dump(data, f, indent=4)
                 continue
             print(f"The field name {field_name} does not exist")
@@ -167,7 +168,7 @@ def modify():
             
             data[field_name] = field_metadata
             
-            with open('initial_schema.json', 'w') as f:
+            with open(INITIAL_SCHEMA_FILE, 'w') as f:
                 json.dump(data, f, indent=4)
         else:
             print("Please enter a valid command")

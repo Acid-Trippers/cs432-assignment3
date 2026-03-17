@@ -3,6 +3,7 @@ import os
 import json
 from typing import Dict, Any, List
 from collections import defaultdict
+from src.config import DATA_DIR, NORMALIZED_DATA_FILE, ANALYZED_DATA_FILE
 
 
 class DataAnalyzer:
@@ -52,9 +53,9 @@ class DataAnalyzer:
             for field_name, value in record.items():
                 self._analyze_value(field_name, value)
 
-    def save_analysis(self, output_file: str = "data/analyzed_data.json"):
-        if not os.path.exists("data"):
-            os.makedirs("data")
+    def save_analysis(self, output_file: str = ANALYZED_DATA_FILE):
+        if not os.path.exists(DATA_DIR):
+            os.makedirs(DATA_DIR)
 
         fields_summary = []
         for f in sorted(self.field_counts.keys()):
@@ -95,8 +96,8 @@ class DataAnalyzer:
 
     
 def run_data_analysis():
-    INPUT_FILE = "data/normalized_data.json"
-    ANALYSIS_FILE = "data/analyzed_data.json"
+    INPUT_FILE = NORMALIZED_DATA_FILE
+    ANALYSIS_FILE = ANALYZED_DATA_FILE
     
     if os.path.exists(INPUT_FILE):
         with open(INPUT_FILE, 'r') as f:

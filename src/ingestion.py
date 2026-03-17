@@ -10,9 +10,10 @@ import os
 import httpx
 import asyncio
 import sys
+from src.config import RECEIVED_DATA_FILE, COUNTER_FILE
 
-Data_file = "received_data.json"
-Counter_file = "counter.txt"
+Data_file = RECEIVED_DATA_FILE
+Counter_file = COUNTER_FILE
 
 def get_counter():
     if not os.path.exists(Counter_file):
