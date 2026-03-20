@@ -15,7 +15,7 @@ import json
 import os
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
-from config import DATA_DIR, METADATA_MANAGER_FILE
+from config import DATA_DIR, METADATA_FILE
 
 # Thresholds for SQL suitability
 SQL_CRITERIA = {
@@ -242,58 +242,41 @@ class SchemaClassifier:
             }
         }
 
-def load_user_schema(schema_file: str = None) -> Dict[str, UserSchema]:
+def load_user_schema_from_metadata(analyzed_data: Dict) -> Dict[str, UserSchema]:
     """
-    Loads user-defined schema from initial_schema.json if it exists.
-    
-    Args:
-        schema_file: Path to initial_schema.json (defaults to data/initial_schema.json)
-    
-    Returns:
-        Dictionary mapping field_name → UserSchema, or empty dict if file doesn't exist
+    Extracts user-defined schema constraints from the merged metadata.
     """
-    if schema_file is None:
-        schema_file = os.path.join(DATA_DIR, "initial_schema.json")
-    
-    if not os.path.exists(schema_file):
-        return {}
-    
-    try:
-        with open(schema_file, 'r', encoding='utf-8') as f:
-            schema_data = json.load(f)
-        
-        user_schema = {}
-        for field_name, field_def in schema_data.items():
-            user_schema[field_name] = UserSchema(
-                fieldName=field_name,
-                fieldType=field_def.get('type', 'unknown'),
-                isUnique=field_def.get('unique', False),
-                isNotNull=field_def.get('not_null', False)
+    user_schema = {}
+    for field in analyzed_data.get('fields', []):
+        constraints = field.get('user_constraints')
+        if constraints:
+            user_schema[field['field_name']] = UserSchema(
+                fieldName=field['field_name'],
+                fieldType=constraints.get('user_type', 'unknown'),
+                isUnique=False, # Default for now
+                isNotNull=constraints.get('is_required', False)
             )
-        
-        print(f"[+] User schema loaded from {schema_file} ({len(user_schema)} fields)")
-        return user_schema
-    
-    except Exception as e:
-        print(f"[!] Could not load user schema: {e}")
-        return {}
+    return user_schema
 
 
 def runPipeline():
     """
     Main classification pipeline:
-    1. Load metadata_manager.json (system analysis)
-    2. Load initial_schema.json (user-defined constraints)
-    3. Classify each field as SQL, Mongo, or Unknown
-    4. Save results to field_metadata.json
+    1. Load metadata.json (Merged system analysis + user schema)
+    2. Classify each field as SQL, Mongo, or Unknown
+    3. Save results to field_metadata.json
     """
     
-    # Load analyzed data
-    with open(METADATA_MANAGER_FILE, 'r', encoding='utf-8') as f:
+    # Load consolidated metadata
+    if not os.path.exists(METADATA_FILE):
+        print(f"[X] ERROR: {METADATA_FILE} not found. Run validation first.")
+        return
+
+    with open(METADATA_FILE, 'r', encoding='utf-8') as f:
         analyzed_data = json.load(f)
     
-    # Load user-defined schema (optional)
-    user_schema = load_user_schema()
+    # Extract user-defined schema from the merged data
+    user_schema = load_user_schema_from_metadata(analyzed_data)
     
     # Initialize classifier
     classifier = SchemaClassifier(user_schema=user_schema)

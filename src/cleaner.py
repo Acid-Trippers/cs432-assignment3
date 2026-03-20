@@ -1,26 +1,33 @@
 import re
 import json
 import os
-from typing import Dict, Any, Set
+import uuid
+from typing import Dict, Any, List, Set, Union
 from collections import defaultdict
-from config import INITIAL_SCHEMA_FILE, RECEIVED_DATA_FILE, CLEANED_DATA_FILE
+from config import INITIAL_SCHEMA_FILE, RECEIVED_DATA_FILE, CLEANED_DATA_FILE, BUFFER_FILE
 
 class DataCleaner:
     def __init__(self, schema_file: str = INITIAL_SCHEMA_FILE):
+        self.buffer: List[Dict] = []
+        self.schema: Dict = {}
         self.canonical_map: Dict[str, str] = {}
-        self.variations: Dict[str, Set[str]] = defaultdict(set)
         
         if os.path.exists(schema_file):
             with open(schema_file, 'r') as f:
-                self.user_schema = json.load(f)
+                self.schema = json.load(f)
             print(f"[*] Loaded schema from: {schema_file}")
+            self._build_canonical_map(self.schema)
         else:
-            print(f"[!] Warning: {schema_file} not found. Running in discovery mode.")
-            self.user_schema = {}
+            print(f"[!] Warning: {schema_file} not found. Running with empty schema.")
 
-        for canonical in self.user_schema.keys():
-            self.canonical_map[canonical.lower()] = canonical
-            self.variations[canonical].add(canonical)
+    def _build_canonical_map(self, schema: Any):
+        """Recursively builds a map of lower-case keys to their canonical case."""
+        if isinstance(schema, dict):
+            for k, v in schema.items():
+                self.canonical_map[k.lower()] = k
+                self._build_canonical_map(v)
+        elif isinstance(schema, list) and schema:
+            self._build_canonical_map(schema[0])
 
     def _to_snake_case(self, name: str) -> str:
         s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
@@ -28,8 +35,8 @@ class DataCleaner:
         return s2.lower()
 
     def _is_similar(self, name1: str, name2: str) -> bool:
-        clean1 = name1.replace('_', '')
-        clean2 = name2.replace('_', '')
+        clean1 = name1.replace('_', '').lower()
+        clean2 = name2.replace('_', '').lower()
         if clean1 == clean2:
             return True
         if len(clean1) > 3 and len(clean2) > 3:
@@ -38,27 +45,27 @@ class DataCleaner:
                     return True
         return False
 
-    def _find_canonical_match(self, field_name: str) -> str:
+    def _find_canonical_match(self, field_name: str, schema_level: Dict) -> Union[str, None]:
+        """Finds if field_name matches any key in the current schema_level."""
         lower_name = field_name.lower()
-        if lower_name in self.canonical_map:
-            return self.canonical_map[lower_name]
+        schema_keys = schema_level.keys()
         
+        # 1. Direct match
+        if field_name in schema_keys:
+            return field_name
+        
+        # 2. Case-insensitive match
+        for k in schema_keys:
+            if k.lower() == lower_name:
+                return k
+        
+        # 3. Fuzzy/Snake match
         snake_name = self._to_snake_case(field_name)
-        if snake_name in self.canonical_map.values():
-            self.canonical_map[lower_name] = snake_name
-            self.variations[snake_name].add(field_name)
-            return snake_name
+        for k in schema_keys:
+            if self._is_similar(snake_name, k):
+                return k
         
-        for canonical in self.canonical_map.values():
-            if self._is_similar(snake_name, canonical):
-                self.canonical_map[lower_name] = canonical
-                self.variations[canonical].add(field_name)
-                return canonical
-        
-        canonical = snake_name
-        self.canonical_map[lower_name] = canonical
-        self.variations[canonical].add(field_name)
-        return canonical
+        return None
 
     def sanitize_value(self, value: Any) -> Any:
         if isinstance(value, str):
@@ -66,21 +73,68 @@ class DataCleaner:
             return None if cleaned == "" else cleaned
         return value
 
-    def clean_record(self, record: Dict) -> Dict:
-        cleaned_dict = {}
-        for k, v in record.items():
-            canonical_key = self._find_canonical_match(k)
+    def clean_recursive(self, data: Dict, schema: Dict, parent_id: str) -> Dict:
+        """
+        Recursively cleans data against schema.
+        - Padding: missing schema fields -> null
+        - Ripping: extra data fields -> buffer.json
+        """
+        cleaned_node = {}
+        
+        # 1. Mapping and Ripping
+        matched_data_keys = set()
+        for data_key, data_val in data.items():
+            # Skip internal metadata if any
+            if data_key == "sys_ingested_time":
+                cleaned_node[data_key] = data_val
+                continue
+                
+            canonical_key = self._find_canonical_match(data_key, schema)
             
-            if isinstance(v, dict):
-                cleaned_dict[canonical_key] = self.clean_record(v)
-            elif isinstance(v, list):
-                cleaned_dict[canonical_key] = [
-                    self.clean_record(i) if isinstance(i, dict) else self.sanitize_value(i) 
-                    for i in v
-                ]
+            if canonical_key:
+                matched_data_keys.add(data_key)
+                schema_val = schema[canonical_key]
+                
+                if isinstance(schema_val, dict) and isinstance(data_val, dict):
+                    # Recurse for nested objects
+                    cleaned_node[canonical_key] = self.clean_recursive(data_val, schema_val, parent_id)
+                elif isinstance(schema_val, list) and isinstance(data_val, list) and schema_val:
+                    # Recurse for arrays
+                    template = schema_val[0]
+                    cleaned_node[canonical_key] = [
+                        self.clean_recursive(item, template, parent_id) if isinstance(item, dict) and isinstance(template, dict)
+                        else self.sanitize_value(item)
+                        for item in data_val
+                    ]
+                else:
+                    # Scalar value
+                    cleaned_node[canonical_key] = self.sanitize_value(data_val)
             else:
-                cleaned_dict[canonical_key] = self.sanitize_value(v)
-        return cleaned_dict
+                # Ripper logic: Field not in schema
+                self.buffer.append({
+                    "parent_record_id": parent_id,
+                    "field": data_key,
+                    "value": data_val
+                })
+        
+        # 2. Padding: Check for missing keys in schema
+        for schema_key, schema_val in schema.items():
+            # Check if this schema key was matched by any data key
+            matched = False
+            for dk in data.keys():
+                if self._find_canonical_match(dk, schema) == schema_key:
+                    matched = True
+                    break
+            
+            if not matched:
+                if isinstance(schema_val, dict):
+                    cleaned_node[schema_key] = self.clean_recursive({}, schema_val, parent_id)
+                elif isinstance(schema_val, list):
+                    cleaned_node[schema_key] = []
+                else:
+                    cleaned_node[schema_key] = None # Padding with null
+        
+        return cleaned_node
 
 def run_cleaning_pipeline():
     if not os.path.exists(RECEIVED_DATA_FILE):
@@ -94,21 +148,30 @@ def run_cleaning_pipeline():
         with open(RECEIVED_DATA_FILE, 'r') as f:
             all_raw_records = json.load(f)
             
-        for raw_record in all_raw_records:
+        for i, raw_record in enumerate(all_raw_records):
             try:
-                cleaned_record = cleaner.clean_record(raw_record)
+                # Use sys_ingested_time or index as temporary ID for the buffer
+                record_id = raw_record.get("id", raw_record.get("_id", f"idx_{i}"))
+                cleaned_record = cleaner.clean_recursive(raw_record, cleaner.schema, record_id)
                 all_cleaned_records.append(cleaned_record)
             except Exception as e:
-                print(f"[!] Error cleaning record: {e}")
+                print(f"[!] Error cleaning record {i}: {e}")
+                
     except (json.JSONDecodeError, IOError) as e:
         print(f"[!] Error reading input file: {e}")
         return
 
+    # Save Cleaned Data
     with open(CLEANED_DATA_FILE, 'w') as f:
         json.dump(all_cleaned_records, f, indent=4)
     
-    print(f"\n[SUCCESS] Content cleaned and keys normalized (Structure Preserved).")
-    print(f"[+] Output saved to {CLEANED_DATA_FILE}")
+    # Save Buffer Data
+    with open(BUFFER_FILE, 'w') as f:
+        json.dump(cleaner.buffer, f, indent=4)
+    
+    print(f"\n[SUCCESS] Pipeline Phase 3a Complete.")
+    print(f"[+] Cleaned data: {CLEANED_DATA_FILE}")
+    print(f"[+] Buffer (Quarantine): {BUFFER_FILE}")
 
 if __name__ == "__main__":
     run_cleaning_pipeline()

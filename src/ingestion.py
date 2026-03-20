@@ -11,6 +11,8 @@ import httpx
 import asyncio
 import sys
 from config import RECEIVED_DATA_FILE, COUNTER_FILE
+import datetime
+
 
 Data_file = RECEIVED_DATA_FILE
 Counter_file = COUNTER_FILE
@@ -41,6 +43,9 @@ async def fetch_data(num):
                         record_json = line[6:]  # Remove "data: " prefix
                         try:
                             record = json.loads(record_json)
+
+                            # Record ingestion time
+                            record['sys_ingested_time'] = datetime.datetime.now().isoformat()
                             new_records.append(record)
                             fetched_now += 1
                             if fetched_now % 100 == 0:

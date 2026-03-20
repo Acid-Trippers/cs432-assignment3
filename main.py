@@ -54,34 +54,50 @@ async def main():
     try:
         if args.command == 'initialise':
             # Wipe local storage
-            files_to_clean = [RECEIVED_DATA_FILE, COUNTER_FILE, METADATA_MANAGER_FILE, ANALYZED_SCHEMA_FILE, FIELD_METADATA_FILE, NORMALIZED_DATA_FILE, CLEANED_DATA_FILE, BUFFER_FILE]
+            files_to_clean = [
+                INITIAL_SCHEMA_FILE, COUNTER_FILE, RECEIVED_DATA_FILE, 
+                CLEANED_DATA_FILE, BUFFER_FILE, ANALYZED_SCHEMA_FILE, 
+                METADATA_FILE
+            ]
             for f in files_to_clean:
                 if os.path.exists(f):
-                    os.remove(f)
-            if os.path.exists("counter.txt"):
-                os.remove("counter.txt")
+                    if os.path.isfile(f):
+                        os.remove(f)
+                    else:
+                        shutil.rmtree(f)
             
             print("[!] Environment reset.")
             
-            # Step A: Get User Schema (Your friend's script)
+            # Step A: Get User Schema
             run_script("schema_definition")
             
-            # Step B: Get first batch of data (Your worker)
+            # Step B: Get first batch of data
             run_script("ingestion", [str(args.records)])
 
-            print(f"[*] Records ingested. Running Analyzer on {args.records} records...")
-            # run_script("analyzer")   <-- This creates analyzed_schema.json
+            # Step C: Clean Data (Padding & Ripping)
+            run_script("cleaner")
+
+            # Step D: Analyze Data (Statistical Profiling)
+            run_script("analyzer")
+
+            # Step E: Validate & Consolidate (Merge Schema + Stats)
+            run_script("validation")
             
             print("[+] System is now fully initialized and metadata.json is finalized.")
 
         elif args.command == 'fetch':
-            if not os.path.exists(METADATA_MANAGER_FILE):
+            if not os.path.exists(METADATA_FILE):
                 print("[X] ERROR: No metadata found. You must run 'initialise' first to calibrate the system.")
                 return
 
             print(f"[*] System Ready. Fetching {args.records} additional records...")
             run_script("ingestion", [str(args.records)])
-            # Future: run_script("classifier") or "routing" could happen here
+            # Step C: Clean
+            run_script("cleaner")
+            # Step D: Analyze
+            run_script("analyzer")
+            # Step E: Validate
+            run_script("validation")
     finally:
         print("[*] Shutting down API server...")
         api_process.terminate()
