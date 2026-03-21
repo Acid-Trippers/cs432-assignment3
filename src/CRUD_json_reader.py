@@ -1,7 +1,7 @@
 import json
 import sys
-from src.config import QUERY_FILE
 import os
+from .config import QUERY_FILE
 
 def validate_structure(data, path="root"):
     """Validates CRUD request structure."""
