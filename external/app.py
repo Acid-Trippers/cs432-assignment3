@@ -74,6 +74,7 @@ FIELD_POOL = {
 # Each field gets a permanent "Appearance Probability" for this server session.
 # Some will be > 0.8 (Common/SQL candidates), some < 0.2 (Rare/Mongo candidates).
 FIELD_WEIGHTS = {key: random.uniform(0.05, 0.95) for key in FIELD_POOL.keys()}
+# FIELD_WEIGHTS["name"] = 0.005  # For testing the UNKNOWN gate with a very rare field
 
 def get_nested_metadata():
     """Generates consistent nested keys but randomly omits keys AND values."""

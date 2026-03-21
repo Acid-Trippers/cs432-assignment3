@@ -16,6 +16,7 @@ METADATA_FILE = os.path.join(DATA_DIR, "metadata.json")  # Unified metadata file
 SQL_DATA_FILE = os.path.join(DATA_DIR, "sql_data.json")
 MONGO_DATA_FILE = os.path.join(DATA_DIR, "mongo_data.json")
 QUERY_FILE = os.path.join(DATA_DIR, "query.json")
+CHECKPOINT_FILE = os.path.join(DATA_DIR, "checkpoint.json")
 
 # Database configuration
 DATABASE_URL = os.environ.get("POSTGRES_URI", "postgresql://admin:secret@localhost:5433/cs432_db")

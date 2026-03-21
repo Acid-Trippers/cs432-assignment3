@@ -220,7 +220,7 @@ def fetch(count=100):
 
         # 4. Route and Flush
         # (Your updated router will clear cleaned_data.json)
-        print("[*] Sharding Data...")
+        print("[*] Sharing Data...")
         batch_stats = data_router.route_data()
         
         if batch_stats:

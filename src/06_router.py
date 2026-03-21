@@ -86,7 +86,7 @@ def route_data() -> None:
         for key, value in record.items():
             decision = routes.get(key, "UNKNOWN")
             
-            if decision == "BUFFER":
+            if decision == "UNKNOWN":
                 buffer_data.append({"record_id": ref_id, "field": key, "value": value})
             elif decision == "SQL":
                 sql_rec[key] = value

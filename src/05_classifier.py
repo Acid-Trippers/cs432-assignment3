@@ -221,7 +221,7 @@ def runPipeline(verbose=True):
 
     sql_total = sum(1 for f in analyzed_data['fields'] if f['decision'] == 'SQL')
     mongo_total = sum(1 for f in analyzed_data['fields'] if f['decision'] == 'MONGO')
-    buffer_total = sum(1 for f in analyzed_data['fields'] if f['decision'] == 'BUFFER')
+    buffer_total = sum(1 for f in analyzed_data['fields'] if f['decision'] == 'UNKNOWN')
 
     print(f"\n[GLOBAL STATE] SQL Columns: {sql_total} | Mongo Fields: {mongo_total} | Buffered: {buffer_total}")
     print("="*50)
