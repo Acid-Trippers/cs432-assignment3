@@ -78,7 +78,7 @@ async def main():
             run_script("02_cleaner")
 
             # Step D: Analyze Data (Statistical Profiling)
-            run_script("analyzer")
+            run_script("03_analyzer")
 
             # Step E: Validate & Consolidate (Merge Schema + Stats)
             run_script("validation")

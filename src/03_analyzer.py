@@ -1,3 +1,13 @@
+"""
+Analyzes cleaned JSON records to infer structural metadata, data types, and field statistics.
+
+- Recursively profiles nested JSON structures, supporting both objects and arrays
+- Detects the frequency of various data types mapped to each unique field path
+- Tracks nesting depth, parent-child path relationships, and array content types (primitive vs. object)
+- Samples unique values and measures field cardinality with memory-safe capping limits
+- Exports a comprehensive statistical analysis and schema map to a JSON file for downstream routing
+"""
+
 import re
 import os
 import json
