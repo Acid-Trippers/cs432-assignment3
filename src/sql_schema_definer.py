@@ -124,7 +124,7 @@ class SQLSchemaBuilder:
 
     def __init__(self, database_url: str = None):
         if database_url is None:
-            database_url = DATABASE_URL  # from config — Postgres in Docker, SQLite locally
+            database_url = DATABASE_URL  # from config — reads POSTGRES_URI env var
 
         self.database_url = database_url
         self.engine = None
