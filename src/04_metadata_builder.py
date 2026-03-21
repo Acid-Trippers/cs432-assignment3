@@ -1,12 +1,11 @@
 """
-Consolidates user-defined schema specifications with statistically analyzed fields 
-to build a unified metadata playbook for schema classification.
+Consolidates user-defined schemas with statistically analyzed fields into a unified metadata playbook.
 
-- Schema Flattening: Transforms nested initial schemas into flat, dot-notation path mappings (e.g., parent.child).
-- Constraint Extraction: Derives intended data types (user_type) from the user's base template.
-- Metadata Merging: Injects user-defined types directly into the statistically generated fields mapped by the analyzer.
-- Buffer Identification: Flags purely discovered/unmapped variables by assigning them null constraints, instructing the classifier to rely purely on heuristics.
-- Playbook Export: Outputs the fully merged data (metadata.json) to drive downstream SQL vs. Mongo routing decisions.
+- Transforms nested initial schemas into flat, dot-notation path mappings.
+- Extracts expected intended data types directly from the user's base template.
+- Merges user-defined constraints with the statistically generated field properties.
+- Flags discovered but unmapped buffer variables, instructing the classifier to use heuristics.
+- Outputs the finalized schema property mapping to `metadata.json`.
 """
 
 import json

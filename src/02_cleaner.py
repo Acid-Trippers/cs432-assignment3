@@ -1,14 +1,11 @@
 """
-Loads the incoming raw JSON data (received_data.json) and structurally aligns it to the expected predefined data schema (initial_schema.json).
+Cleans and aligns incoming raw JSON data to the standard predefined schema properties.
 
-- Canonical Key Mapping & Fuzzy Matching: Maps incoming arbitrary keys to standard schema shapes 
-   using direct, case-insensitive, and snake_case transformations.
-- Value Sanitization: Strips whitespaces from strings and converts purely empty strings to `None`.
-- Type Casting: Attempts to gracefully cast incoming values to the native types dictated by the template 
-   schema (int, float, bool, str) while letting values safely pass through if casting fails.
-- Quarantine (Buffering) & Lossless Ripping: Captures unmapped extraneous fields into a secondary 
-   quarantine file (buffer.json) for auditing, while still retaining them recursively 
-   in the output `cleaned_data.json` to guarantee zero data loss.
+- Maps incoming arbitrary keys to standard schema shapes using direct, case-insensitive, and snake_case matching.
+- Strips whitespaces from string values and converts empty string variations to `None`.
+- Gracefully casts incoming values to native schema types (int, float, bool, str) where possible.
+- Quarantines unmapped extraneous fields into a secondary buffer file without discarding data.
+- Recursively processes arrays and nested objects to guarantee zero data loss.
 """
 
 import re

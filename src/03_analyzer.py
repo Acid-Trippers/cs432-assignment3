@@ -1,13 +1,13 @@
 """
-Analyzes cleaned JSON records to infer structural metadata, data types, and statistical properties.
+Analyzes cleaned JSON records to compile statistical profiles and structural traits.
 
-- Statistical Profiling: Calculates the appearance frequency (sparsity) of every field across all records.
-- Type Detection & Stability: Identifies the dominant data type for each field and calculates how stably it adheres to that type.
-- String Pattern Recognition: Inspects string values to detect structured formats (e.g., ddd-ddd-dddd for phone numbers).
-- Structural Mapping: Recursively walks through JSON structures to map nesting depths and parent-child field relationships.
-- Array Analysis: Distinguishes between arrays containing primitive values versus arrays of complex objects.
-- Cardinality Measurement: Samples and limits unique values to safely calculate field cardinality.
-- Schema Export: Compiles the analysis into a standardized JSON metadata file (analyzed_schema.json) for downstream routing.
+- Calculates the appearance frequency (sparsity) of every field across all records.
+- Identifies the dominant data type for each field and measures its type stability.
+- Detects strings matching structured formats (e.g., phone numbers) via regex patterns.
+- Walks JSON structures to map nesting depths and structural parent-child relationships.
+- Differentiates primitive arrays from arrays storing complex objects.
+- Calculates and flags field-level cardinality to identify primary key candidates.
+- Exports the comprehensive profile to `analyzed_schema.json`.
 """
 
 import re

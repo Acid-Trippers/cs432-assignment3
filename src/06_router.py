@@ -1,11 +1,11 @@
 """
-Splits the globally cleaned dataset into distinct operational payloads for disparate database engines 
-based on the final algorithmic routing decisions in the metadata playbook.
+Splits the globally cleaned dataset into distinct operational payloads for different database engines.
 
-- Decision Ingestion: Reads the final SQL/MONGO/UNKNOWN decisions tagged on each field from metadata.json.
-- Route Mapping: Compiles a hierarchical dictionary to identify where top-level parent keys and their entire nested structures should safely be sent.
-- Payload Fragmentation: Iterates over the master cleaned_data.json and physically splits horizontal records into three vertical shards (SQL fields, Mongo fields, Unknown fields).
-- Checkpoint Export: Serializes the fragmented data out to three independent temporary JSON files (sql_data.json, mongo_data.json, unknown_data.json) to separate database engine concerns.
+- Ingests the final SQL, MONGO, or UNKNOWN database routing decisions from the metadata playbook.
+- Compiles a hierarchical map to safely allocate top-level parent keys and their entire nested structures.
+- Iterates over the master cleaned dataset and horizontally shards properties according to their destination.
+- Forces identified primary key candidates into both SQL and Mongo pipelines to support joins.
+- Serializes the fragmented output into engine-specific datasets (`sql_data.json`, `mongo_data.json`, etc.).
 """
 
 import json

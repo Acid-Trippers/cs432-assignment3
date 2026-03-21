@@ -1,11 +1,11 @@
 """
-Evaluates merged schema metadata to algorithmically route each field mechanism into the optimal 
-database pipeline (SQL, MongoDB, or Quarantine/Unknown).
+Evaluates merged schema metadata to algorithmically route fields into the optimal database pipeline.
 
-- Statistical Triage (Pass 1): Grades fields based purely on historical density. Stable, dense variables (>50% frequency, 100% type stability) are tentatively marked for SQL. Unstable or highly sparse data is slated for Mongo.
-- Anomaly Quarantine: Catches extreme outlier fields (e.g., <1% frequency) and forces them into an UNKNOWN buffer state for manual review.
-- Structural Pruning (Pass 2): Limits relational complexity by automatically exiling any deeply nested components (Depth > 2) and all of their children straight into the Mongo document pipeline, overriding initial statistical scores.
-- Final Designation: Embeds the ultimate routing choice and confidence justification back into the metadata.json file to dictate actual Database table generation.
+- Grades fields based on historical appearance frequency and type stability to identify SQL candidates.
+- Quarantines highly sparse outlier fields into an UNKNOWN buffer for manual review.
+- Prunes relational complexity by forcing deeply nested objects (Depth > 2) into the MongoDB pipeline.
+- Overrides basic statistical routing decisions with structural limitations and rules.
+- Embeds the final routing choices (SQL/MONGO/UNKNOWN) backward into `metadata.json`.
 """
 
 import json

@@ -1,8 +1,10 @@
 """
-- Task: Ingest data from the API endpoint and store it in a file.
-- The script will request a specified number of records from the API and append them to a local file called "received_data.json".
-- It also maintains a counter of total records fetched across runs in "counter.txt" to track progress.
-- Usage: Run this script with the number of records you want to fetch as a command-line argument, e.g., `python ingestion.py 1000`
+Ingests raw data from the local API endpoint and yields it in manageable chunks.
+
+- Requests a specified number of records from the API in a streamed connection.
+- Chunks incoming data into batches to stream directly into the memory pipeline.
+- Preserves a persistent counter across runs using `counter.txt` to track total fetched records.
+- Appends an ingestion timestamp (`sys_ingested_time`) to every fetched record.
 """
 
 import json
