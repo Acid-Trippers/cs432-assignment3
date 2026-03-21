@@ -1,0 +1,62 @@
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16
+    container_name: cs432_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: cs432_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # ── MongoDB ────────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7
+    container_name: cs432_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: secret
+    volumes:
+      - mongo_data:/data/db
+
+  # ── External API (external/app.py) ─────────────────────────────────────────
+  api:
+    build: .
+    container_name: cs432_api
+    restart: unless-stopped
+    command: python external/app.py
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+
+  # ── Main Pipeline ──────────────────────────────────────────────────────────
+  pipeline:
+    build: .
+    container_name: cs432_pipeline
+    depends_on:
+      - postgres
+      - mongo
+      - api
+    stdin_open: true
+    tty: true
+    environment:
+      POSTGRES_URI: postgresql://admin:secret@postgres:5432/cs432_db
+      MONGO_URI: mongodb://admin:secret@mongo:27017/
+      MONGO_DB_NAME: cs432_db
+      API_HOST: http://api:8000
+    volumes:
+      - ./data:/app/data
+    command: ["tail", "-f", "/dev/null"]
+
+volumes:
+  postgres_data:
+  mongo_data:
