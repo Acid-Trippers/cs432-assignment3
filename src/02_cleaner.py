@@ -173,23 +173,6 @@ class DataCleaner:
                 else:
                     cleaned_node[data_key] = self.sanitize_value(data_val)
         
-        # 2. Padding: Check for missing keys in schema
-        for schema_key, schema_val in schema.items():
-            # Check if this schema key was matched by any data key
-            matched = False
-            for dk in data.keys():
-                if self._find_canonical_match(dk, schema) == schema_key:
-                    matched = True
-                    break
-            
-            if not matched:
-                if isinstance(schema_val, dict):
-                    cleaned_node[schema_key] = self.clean_recursive({}, schema_val, parent_id)
-                elif isinstance(schema_val, list):
-                    cleaned_node[schema_key] = []
-                else:
-                    cleaned_node[schema_key] = None # Padding with null
-        
         return cleaned_node
 
 def run_cleaning_pipeline():
