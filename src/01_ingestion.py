@@ -53,30 +53,16 @@ async def fetch_data(num):
                         except json.JSONDecodeError:
                             print(f"[!] Warning: Failed to parse record: {record_json}")
 
-                # Load existing records if file exists
-                existing_records = []
-                if os.path.exists(Data_file):
-                    try:
-                        with open(Data_file, 'r') as f:
-                            content = f.read().strip()
-                            if content:
-                                existing_records = json.loads(content)
-                    except (json.JSONDecodeError, IOError) as e:
-                        print(f"[!] Warning: Could not read existing data from {Data_file}: {e}")
-                        existing_records = []
-                
-                # Append new records and save back as a JSON array
-                existing_records.extend(new_records)
-                with open(Data_file, 'w') as f:
-                    json.dump(existing_records, f, indent=4)
-
                 update_total = curr_total + fetched_now
                 increment_counter(update_total)
-                print(f"[*] Ingestion completed: {fetched_now} records added. Total now {update_total}.")
+                print(f"[*] Ingestion completed: {fetched_now} records fetched. Total now {update_total}.")
+                return new_records
     except httpx.ConnectError:
         print("[!] Error: Connection failed. Is app.py running?")
+        return []
     except Exception as e:
         print(f"[!] An error occurred during ingestion: {e}")
+        return []
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

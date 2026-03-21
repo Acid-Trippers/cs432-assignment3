@@ -228,7 +228,7 @@ def load_user_schema_from_metadata(analyzed_data: Dict) -> Dict[str, UserSchema]
 
 def runPipeline():
     if not os.path.exists(METADATA_FILE):
-        print(f"[X] ERROR: {METADATA_FILE} not found. Run validation first.")
+        print(f"[X] ERROR: {METADATA_FILE} not found. Run metadata builder first.")
         return
 
     with open(METADATA_FILE, 'r', encoding='utf-8') as f:

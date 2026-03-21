@@ -51,13 +51,15 @@ def merge_metadata():
             field['user_constraints'] = user_constraints[f_name]
         else:
             field['user_constraints'] = None
-            # If it's in analyzed but not in initial, it was likely ripped to buffer
-            # but cleaner.py might have let it through if it fuzzy matched?
-            # Actually, cleaner.py pads missing fields and rips extra fields.
-            # So everything in cleaned_data (and thus analyzed_schema) SHOULD be in initial_schema.
+            # If it's in analyzed but not in initial, it was likely an unmapped field from the buffer.
+            # Buffer fields pass through into cleaned_data.json via fuzzy match or retaining extra fields,
+            # meaning they end up in analyzed_schema.json with user_constraints: null.
+            # This is exactly the signal the classifier expects to treat it as "no schema declaration, fall back to heuristic scoring".
 
     with open(METADATA_FILE, 'w') as f:
         json.dump(analyzed_schema, f, indent=4)
+        
+    return analyzed_schema
     
     print(f"\n[SUCCESS] Pipeline Phase 3c Complete.")
     print(f"[+] Consolidated Metadata: {METADATA_FILE}")
