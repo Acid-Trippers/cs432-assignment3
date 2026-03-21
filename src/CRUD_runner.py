@@ -1,6 +1,6 @@
 import json
 from .config import QUERY_FILE, METADATA_FILE, QUERY_OUTPUT_FILE
-from src.CRUD_runner import create_operation, read_operation, update_operation, delete_operation
+from .CRUD_operations import create_operation, read_operation, update_operation, delete_operation
 
 def query_parser():
     """Parse the query.json and interpret what it means."""

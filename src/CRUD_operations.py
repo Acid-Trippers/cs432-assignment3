@@ -336,9 +336,188 @@ def update_operation(parsed_query, db_analysis):
     return {"operation": "UPDATE", "status": "not_implemented"} 
     
 def delete_operation(parsed_query, db_analysis):
-    """Delete records."""
+    """
+    Delete records using two-phase approach:
+    Phase 1: Find all matching record_ids based on filters
+    Phase 2: Delete records using those record_ids
+    
+    If filters = {}, deletes ALL records from all databases.
+    """
     print(f"\n{'='*60}")
-    print("[DELETE OPERATION]")
+    print("[DELETE OPERATION - TWO PHASE APPROACH]")
     print(f"{'='*60}")
-    return {"operation": "DELETE", "status": "not_implemented"}
+    
+    entity = parsed_query.get("entity")
+    filters = parsed_query.get("filters", {})
+    databases_needed = db_analysis.get("databases_needed", [])
+    field_locations = db_analysis.get("field_locations", {})
+    
+    # If no filters, delete ALL records (user explicitly stated they want this)
+    if not filters:
+        print(f"\n[WARNING] No filters specified - will DELETE ALL records from all databases")
+    
+    print(f"\n[DEBUG] Entity: {entity}, Filters: {filters}, Databases: {databases_needed}")
+    
+    # ============================================================================
+    # PHASE 1: FIND record_ids matching filters
+    # ============================================================================
+    print(f"\n{'─'*60}")
+    print("[PHASE 1] Finding matching record_ids to delete...")
+    print(f"{'─'*60}")
+    
+    matching_record_ids = {}
+    
+    # Query SQL for matching record_ids
+    if "SQL" in databases_needed and sql_available:
+        try:
+            Model = sql_engine.models.get(entity)
+            if Model:
+                query = sql_engine.session.query(Model.record_id)
+                
+                # Apply SQL filters
+                sql_filters = {k: v for k, v in filters.items() if field_locations.get(k) == "SQL"}
+                if sql_filters:
+                    for field_name, field_value in sql_filters.items():
+                        query = query.filter(getattr(Model, field_name) == field_value)
+                        print(f"[SQL Filter] {field_name} = {field_value}")
+                
+                record_ids = [rid[0] for rid in query.all()]
+                matching_record_ids["SQL"] = record_ids
+                print(f"[SQL] Found {len(record_ids)} matching record_ids: {record_ids[:5]}{'...' if len(record_ids) > 5 else ''}")
+        except Exception as e:
+            print(f"[SQL] Error in Phase 1: {e}")
+            matching_record_ids["SQL"] = []
+    elif "SQL" in databases_needed:
+        print(f"[SQL] Skipped (SQL Engine not available)")
+        matching_record_ids["SQL"] = []
+    
+    # Query MongoDB for matching record_ids
+    if "MongoDB" in databases_needed:
+        try:
+            collection = mongo_db[entity]
+            mongo_filters = {k: v for k, v in filters.items() if field_locations.get(k) == "MongoDB"}
+            
+            projection = {"record_id": 1}
+            docs = list(collection.find(mongo_filters, projection))
+            record_ids = [doc.get("record_id") for doc in docs if "record_id" in doc]
+            matching_record_ids["MongoDB"] = record_ids
+            print(f"[MongoDB] Found {len(record_ids)} matching record_ids: {record_ids[:5]}{'...' if len(record_ids) > 5 else ''}")
+        except Exception as e:
+            print(f"[MongoDB] Error in Phase 1: {e}")
+            matching_record_ids["MongoDB"] = []
+    
+    # Query Unknown for matching record_ids
+    if "Unknown" in databases_needed:
+        try:
+            unknown_file = os.path.join(DATA_DIR, "unknown_data.json")
+            if os.path.exists(unknown_file):
+                with open(unknown_file, 'r') as f:
+                    data = json.load(f)
+                
+                unknown_filters = {k: v for k, v in filters.items() if field_locations.get(k) == "Unknown"}
+                all_records = data if isinstance(data, list) else [data]
+                
+                if unknown_filters:
+                    matching = [r for r in all_records if all(r.get(k) == v for k, v in unknown_filters.items())]
+                else:
+                    matching = all_records
+                
+                record_ids = [r.get("record_id") for r in matching if "record_id" in r]
+                matching_record_ids["Unknown"] = record_ids
+                print(f"[Unknown] Found {len(record_ids)} matching record_ids: {record_ids[:5]}{'...' if len(record_ids) > 5 else ''}")
+        except Exception as e:
+            print(f"[Unknown] Error in Phase 1: {e}")
+            matching_record_ids["Unknown"] = []
+    
+    # ============================================================================
+    # PHASE 2: DELETE records using record_ids
+    # ============================================================================
+    print(f"\n{'─'*60}")
+    print("[PHASE 2] Deleting records by record_id...")
+    print(f"{'─'*60}")
+    
+    deleted_summary = {}
+    total_deleted = 0
+    
+    # Delete from SQL
+    if "SQL" in databases_needed and sql_available and matching_record_ids.get("SQL"):
+        try:
+            Model = sql_engine.models.get(entity)
+            if Model:
+                delete_query = sql_engine.session.query(Model).filter(
+                    Model.record_id.in_(matching_record_ids["SQL"])
+                )
+                count = delete_query.count()
+                delete_query.delete()
+                sql_engine.session.commit()
+                deleted_summary["SQL"] = count
+                total_deleted += count
+                print(f"[SQL] Deleted {count} records")
+        except Exception as e:
+            print(f"[SQL] Error in Phase 2: {e}")
+            sql_engine.session.rollback()
+            deleted_summary["SQL"] = 0
+    else:
+        deleted_summary["SQL"] = 0
+    
+    # Delete from MongoDB
+    if "MongoDB" in databases_needed and matching_record_ids.get("MongoDB"):
+        try:
+            collection = mongo_db[entity]
+            result = collection.delete_many({"record_id": {"$in": matching_record_ids["MongoDB"]}})
+            deleted_summary["MongoDB"] = result.deleted_count
+            total_deleted += result.deleted_count
+            print(f"[MongoDB] Deleted {result.deleted_count} documents")
+        except Exception as e:
+            print(f"[MongoDB] Error in Phase 2: {e}")
+            deleted_summary["MongoDB"] = 0
+    else:
+        deleted_summary["MongoDB"] = 0
+    
+    # Delete from Unknown
+    if "Unknown" in databases_needed and matching_record_ids.get("Unknown"):
+        try:
+            unknown_file = os.path.join(DATA_DIR, "unknown_data.json")
+            if os.path.exists(unknown_file):
+                with open(unknown_file, 'r') as f:
+                    data = json.load(f)
+                
+                all_records = data if isinstance(data, list) else [data]
+                
+                # Filter out records with matching record_ids
+                remaining_records = [
+                    r for r in all_records 
+                    if r.get("record_id") not in matching_record_ids["Unknown"]
+                ]
+                
+                # Write back the remaining records
+                with open(unknown_file, 'w') as f:
+                    json.dump(remaining_records, f, indent=2)
+                
+                deleted_count = len(all_records) - len(remaining_records)
+                deleted_summary["Unknown"] = deleted_count
+                total_deleted += deleted_count
+                print(f"[Unknown] Deleted {deleted_count} records")
+        except Exception as e:
+            print(f"[Unknown] Error in Phase 2: {e}")
+            deleted_summary["Unknown"] = 0
+    else:
+        deleted_summary["Unknown"] = 0
+    
+    print(f"\n{'='*60}")
+    print("[SUMMARY] Total records deleted:")
+    print(f"  SQL: {deleted_summary.get('SQL', 0)}")
+    print(f"  MongoDB: {deleted_summary.get('MongoDB', 0)}")
+    print(f"  Unknown: {deleted_summary.get('Unknown', 0)}")
+    print(f"  TOTAL: {total_deleted}")
+    print(f"{'='*60}\n")
+    
+    return {
+        "operation": "DELETE",
+        "status": "success",
+        "entity": entity,
+        "filters_applied": filters,
+        "deleted_by_database": deleted_summary,
+        "total_deleted": total_deleted
+    }
     
