@@ -69,10 +69,10 @@ def merge_metadata():
     with open(METADATA_FILE, 'w') as f:
         json.dump(analyzed_schema, f, indent=4)
         
-    return analyzed_schema
-    
     print(f"\n[SUCCESS] Pipeline Phase 3c Complete.")
     print(f"[+] Consolidated Metadata: {METADATA_FILE}")
+
+    return analyzed_schema
 
 if __name__ == "__main__":
     merge_metadata()

@@ -14,8 +14,7 @@ Loads the incoming raw JSON data (received_data.json) and structurally aligns it
 import re
 import json
 import os
-import uuid
-from typing import Dict, Any, List, Set, Union
+from typing import Dict, Any, List, Union
 from collections import defaultdict
 from src.config import INITIAL_SCHEMA_FILE, RECEIVED_DATA_FILE, CLEANED_DATA_FILE, BUFFER_FILE
 
@@ -86,12 +85,31 @@ class DataCleaner:
             return None if cleaned == "" else cleaned
         return value
 
-    def _try_cast(self, value: Any, expected_type_example: Any) -> Any:
+    def _try_cast(self, value: Any, expected_type: Any) -> Any:
+        """
+        Attempts to cast a value to the expected type.
+        
+        Examples:
+        _try_cast("123", int) -> 123
+        _try_cast("123.45", float) -> 123.45
+        _try_cast("true", bool) -> True
+        """
+
         # If no strict type to infer from, or value is None, return as-is
-        if expected_type_example is None or value is None:
+        if expected_type is None or value is None:
             return value
             
-        expected_type = type(expected_type_example)
+        # Support both actual type examples and type name strings
+        if isinstance(expected_type, str):
+            type_name = expected_type.lower()
+            if type_name == "int": expected_type = int
+            elif type_name == "float": expected_type = float
+            elif type_name == "bool": expected_type = bool
+            elif type_name == "string": expected_type = str
+            else: expected_type = type(expected_type)
+        else:
+            expected_type = type(expected_type)
+            
         # If it's already the expected type, let it pass
         if isinstance(value, expected_type):
             return value

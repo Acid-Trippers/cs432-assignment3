@@ -64,7 +64,7 @@ def route_data() -> None:
     field_metadata = metadata.get('fields', [])
 
     if not isinstance(field_metadata, list):
-        raise ValueError("field_metadata.json must contain a list of field decisions")
+        raise ValueError("metadata.json must contain a list of field decisions in 'fields' key")
     if not isinstance(cleaned_data, list):
         raise ValueError("cleaned_data.json must contain a list of records")
 

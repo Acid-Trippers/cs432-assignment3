@@ -12,6 +12,8 @@ import httpx
 import project_config
 from src.config import *
 
+CHECKPOINT_FILE = os.path.join(DATA_DIR, "pipeline_checkpoint.json")
+
 schema_definition = importlib.import_module("src.00_schema_definition")
 ingestion = importlib.import_module("src.01_ingestion")
 cleaner_mod = importlib.import_module("src.02_cleaner")
@@ -52,7 +54,9 @@ def start_api():
 
 
 def wait_for_api(timeout=project_config.API_STARTUP_TIMEOUT):
+    """Polls the API until it's ready."""
     url = f"http://{project_config.API_HOST}:{project_config.API_PORT}/"
+    print(f"[*] Waiting for API server at {url}...")
     start = time.time()
     while time.time() - start < timeout:
         try:
@@ -78,9 +82,36 @@ def save_checkpoint(filepath, data, append=False):
         json.dump(data, f, indent=4)
 
 
+def set_checkpoint(step):
+    """Marks a step as completed."""
+    with open(CHECKPOINT_FILE, 'w') as f:
+        json.dump({"last_step": step, "timestamp": time.time()}, f)
+
+
+def get_last_checkpoint():
+    """Returns the last completed step."""
+    if os.path.exists(CHECKPOINT_FILE):
+        try:
+            with open(CHECKPOINT_FILE, 'r') as f:
+                return json.load(f).get("last_step")
+        except (json.JSONDecodeError, IOError):
+            pass
+    return None
+
+
 def process_in_memory(raw_records, is_fetch=False):
     """Handles the sequential processing of data records in memory."""
     print("[*] Cleaning Data...")
+    
+    # Get current counter for ID offset
+    offset = 0
+    if os.path.exists(COUNTER_FILE):
+        try:
+            with open(COUNTER_FILE, 'r') as f:
+                offset = int(f.read().strip() or 0)
+        except (ValueError, IOError):
+            pass
+
     cleaner = cleaner_mod.DataCleaner()
     cleaned_records = []
     
@@ -92,10 +123,14 @@ def process_in_memory(raw_records, is_fetch=False):
         cleaned_node = cleaner.clean_recursive(record, cleaner.schema, ref_id)
         
         # 3. Explicitly attach the record_id for the database pipeline
-        cleaned_node["record_id"] = i 
+        cleaned_node["record_id"] = offset + i 
         
         cleaned_records.append(cleaned_node)
     
+    # Update counter for next run
+    with open(COUNTER_FILE, 'w') as f:
+        f.write(str(offset + len(raw_records)))
+
     save_checkpoint(CLEANED_DATA_FILE, cleaned_records, append=is_fetch)
     save_checkpoint(BUFFER_FILE, cleaner.buffer, append=is_fetch)
 
@@ -109,11 +144,14 @@ def initialise(count=1000):
     files_to_clean = [
         COUNTER_FILE, RECEIVED_DATA_FILE, CLEANED_DATA_FILE, 
         BUFFER_FILE, ANALYZED_SCHEMA_FILE, METADATA_FILE, 
-        SQL_DATA_FILE, QUERY_FILE
+        SQL_DATA_FILE, QUERY_FILE, CHECKPOINT_FILE
     ]
     for f in files_to_clean:
         if os.path.exists(f):
-            os.remove(f) if os.path.isfile(f) else shutil.rmtree(f)
+            if os.path.isfile(f):
+                os.remove(f)
+            else:
+                shutil.rmtree(f)
     print("\n[!] Environment reset.")
 
     print("[*] Running Schema Definition...")
@@ -122,21 +160,28 @@ def initialise(count=1000):
     print("[*] Fetching Data...")
     raw_records = asyncio.run(ingestion.fetch_data(count))
     save_checkpoint(RECEIVED_DATA_FILE, raw_records, append=False)
+    set_checkpoint("ingest")
 
+    print("[*] Processed In-Memory. (Cleaning + Profiling)")
     process_in_memory(raw_records, is_fetch=False)
+    set_checkpoint("profile")
 
     print("[*] Building Metadata...")
     metadata_builder.merge_metadata()
+    set_checkpoint("metadata")
 
     print("[*] Classifying Schema...")
     classifier.run_classification()
+    set_checkpoint("classify")
     
     print("[*] Routing Data...")
     data_router.route_data()
+    set_checkpoint("route")
     
     print("[*] SQL Pipeline...")
-    #engine = sql_engine.SQLEngine()
-    #sql_pipeline.run_sql_pipeline(engine)
+    set_checkpoint("sql")
+    engine_sql = sql_engine.SQLEngine()
+    sql_pipeline.run_sql_pipeline(engine_sql)
 
 
 def fetch(count=100):
@@ -154,23 +199,11 @@ def fetch(count=100):
     data_router.route_data()
 
     print("[*] SQL Pipeline Insert...")
-    #engine = sql_engine.SQLEngine()
-    #sql_pipeline.run_sql_pipeline(engine)
+    engine_sql = sql_engine.SQLEngine()
+    sql_pipeline.run_sql_pipeline(engine_sql)
 
 
-def wait_for_server(url="http://127.0.0.1:8000/"):
-    """Polls the API until it's ready, ensuring the machine doesn't try to fetch early."""
-    import urllib.request
-    from urllib.error import URLError
-    print("[*] Waiting for API server to be ready...")
-    for _ in range(30):
-        try:
-            urllib.request.urlopen(url)
-            return True
-        except URLError:
-            time.sleep(0.5)
-    print("[!] Warning: API server might not be ready.")
-    return False
+# Removed redundant wait_for_server function
 
 
 def main():
@@ -180,22 +213,13 @@ def main():
         else project_config.FETCH_COUNT
     )
 
-    #start_docker()
+    # start_docker()
     api_process = start_api()
 
     if not wait_for_api():
         print("[X] API server failed to start.")
         api_process.terminate()
-        stop_docker()
-        sys.exit(1)
-
-    command = sys.argv[1]
-    count = int(sys.argv[2]) if len(sys.argv) > 2 else (1000 if command == 'initialise' else 100)
-
-    api_process = start_api()
-    if not wait_for_server():
-        print("[X] Error: API server did not start in time.")
-        api_process.terminate()
+        # stop_docker()
         sys.exit(1)
 
     try:
@@ -203,6 +227,32 @@ def main():
             initialise(count)
         elif command == "fetch":
             fetch(count)
+        elif command == "resume":
+            last_step = get_last_checkpoint()
+            if not last_step:
+                print("[!] No checkpoint found. Starting 'initialise' instead.")
+                initialise(count)
+            else:
+                print(f"[*] Resuming from last step: {last_step}")
+                # Logic to resume from specific steps could be more granular,
+                # but for now we'll just re-run from metadata if profile was done, etc.
+                if last_step == "ingest":
+                    process_in_memory(json.load(open(RECEIVED_DATA_FILE)), is_fetch=False)
+                    # continue the chain...
+                    metadata_builder.merge_metadata()
+                    classifier.run_classification()
+                    data_router.route_data()
+                elif last_step == "profile":
+                    metadata_builder.merge_metadata()
+                    classifier.run_classification()
+                    data_router.route_data()
+                elif last_step == "metadata":
+                    classifier.run_classification()
+                    data_router.route_data()
+                elif last_step == "classify":
+                    data_router.route_data()
+                else:
+                    print("[+] Pipeline already complete or at final stage.")
         else:
             print(f"Unknown command: {command}")
             sys.exit(1)

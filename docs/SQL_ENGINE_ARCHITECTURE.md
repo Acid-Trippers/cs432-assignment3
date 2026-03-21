@@ -59,7 +59,7 @@ Every child table has a **Foreign Key** back to its parent for referential integ
 
 ```
 Layer 1: SCHEMA DEFINITION (sql_schema_definer.py)
-         Input: initial_schema.json + metadata_manager.json
+         Input: initial_schema.json + metadata.json
          Output: SQLAlchemy models + database tables
 
 Layer 2: DATA NORMALIZATION & ENGINE (sql_engine.py)
@@ -112,7 +112,7 @@ Layer 3: PIPELINE ORCHESTRATION (sql_pipeline.py)
 ```
 INPUT DATA (nested JSON)
         ↓
-[sql_schema_definer.py] ← initial_schema.json, metadata_manager.json
+[sql_schema_definer.py] ← initial_schema.json, metadata.json
         ↓
     SQLAlchemy Models (dynamically created)
         ↓
@@ -131,7 +131,7 @@ INPUT DATA (nested JSON)
 
 | File | Purpose | Input | Output |
 |------|---------|-------|--------|
-| **sql_schema_definer.py** | Schema definition & table creation | `initial_schema.json`, `metadata_manager.json` | SQLAlchemy models, database tables |
+| **sql_schema_definer.py** | Schema definition & table creation | `initial_schema.json`, `metadata.json` | SQLAlchemy models, database tables |
 | **sql_engine.py** | Data operations (insert, query, normalize) | Nested JSON records, SQLAlchemy models | Normalized data in SQL tables |
 | **sql_pipeline.py** | Orchestration & reporting | `sql_data.json` | Database populated with statistics |
 
@@ -189,15 +189,14 @@ Analyzes metadata to determine table structures.
 ###### `load_schemas()`
 - **What it does:** Loads three JSON files
   - `initial_schema.json` → field names and basic types
-  - `metadata_manager.json` → is_nested, is_array flags
-  - `field_metadata.json` → advanced field properties
-- **Why:** Reads ground truth from user schema + analysis results
+  - `initial_schema.json` → user-defined types (ground truth)
+  - `metadata.json` → field analysis, types, results of classification (SQL/Mongo)
+- **Why:** Reads ground truth from user schema + final metadata results
 - **Impact:** Populates analyzer's internal state for processing
 
 ```python
 self.initial_schema      # {"email": "string", "age": "int", ...}
-self.metadata_manager    # {"email": {...}, "tags": {"is_array": True}, ...}
-self.field_metadata      # {"email": {...}, ...}
+self.metadata            # {"fields": [{"field_name": "email", ...}]}
 ```
 
 ---
@@ -356,8 +355,8 @@ Dynamically creates SQLAlchemy models and actual database tables.
 Decomposes nested JSON into relational format.
 
 ###### `load_metadata()`
-- **What it does:** Loads `metadata_manager.json` and `field_metadata.json`
-- **Impact:** Normalizer knows which fields are nested/arrays
+- **What it does:** Loads `metadata.json`
+- **Impact:** Normalizer knows which fields are nested/arrays/routed to SQL
 
 ---
 
@@ -555,9 +554,7 @@ Main interface for all data operations.
   ════════════════════════════════════════════════════════════════════════════════
   SQL PIPELINE SUMMARY
   ════════════════════════════════════════════════════════════════════════════════
-  
-  Database: sqlite:////data/engine.db
-  
+    
   Load Results:
     Successful Inserts: 950
     Failed Inserts: 50
@@ -601,16 +598,15 @@ Main interface for all data operations.
 ┌─────────────────────────────────────────────────────────────────┐
 │                    INITIAL INPUT FILES                           │
 ├─────────────────────────────────────────────────────────────────┤
-│ initial_schema.json        metadata_manager.json   sql_data.json │
-│   (ground truth)          (analyzer output)       (router output)│
+│ initial_schema.json        metadata.json           sql_data.json │
+│   (ground truth)          (classifier output)     (router output)│
 └──────┬──────────────────────┬──────────────────────┬─────────────┘
        │                      │                      │
        ▼                      ▼                      │
 ┌─────────────────────────────────────────┐        │
 │  SchemaAnalyzer.load_schemas()          │        │
 │  ├─ Load initial_schema.json            │        │
-│  ├─ Parse metadata_manager.json         │        │
-│  └─ Index field_metadata.json           │        │
+│  └─ Parse metadata.json                 │        │
 └──────────┬──────────────────────────────┘        │
            │                                       │
            ▼                                       │
@@ -776,7 +772,7 @@ SUCCESS ✓
 }
 ```
 
-**Assuming metadata_manager.json flagged:**
+**Assuming metadata.json flagged:**
 ```json
 {
   "metadata": {"is_nested": true, "is_array": false},

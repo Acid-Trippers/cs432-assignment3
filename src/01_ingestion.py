@@ -13,6 +13,8 @@ import sys
 from src.config import RECEIVED_DATA_FILE, COUNTER_FILE
 import datetime
 
+INGESTION_TIMEOUT = 30 # seconds
+
 
 Data_file = RECEIVED_DATA_FILE
 Counter_file = COUNTER_FILE
@@ -36,7 +38,7 @@ async def fetch_data(num):
 
     new_records = []
     try:
-        async with httpx.AsyncClient(timeout = None) as client:
+        async with httpx.AsyncClient(timeout = INGESTION_TIMEOUT) as client:
             async with client.stream("GET", url) as response:
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):

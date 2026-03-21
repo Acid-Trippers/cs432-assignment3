@@ -17,10 +17,10 @@ SQL_DATA_FILE = os.path.join(DATA_DIR, "sql_data.json")
 QUERY_FILE = os.path.join(DATA_DIR, "query.json")
 
 # Database configuration
-DATABASE_URL = os.environ.get("POSTGRES_URI", "postgresql://admin:secret@localhost:5432/cs432_db")
+DATABASE_URL = os.environ.get("POSTGRES_URI", "postgresql://admin:secret@localhost:5433/cs432_db")
 
 # MongoDB
-MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb://admin:secret@localhost:27017/")
 MONGO_DB_NAME = os.environ.get("MONGO_DB_NAME", "cs432_db")
 
 # External API

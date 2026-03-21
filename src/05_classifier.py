@@ -14,6 +14,13 @@ from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 from src.config import DATA_DIR, METADATA_FILE
 
+CLASSIFIER_CONFIG = {
+    "rare_field_threshold": 0.01,
+    "type_stability_threshold": 1.0,
+    "density_threshold": 0.50,
+    "max_internal_nesting": 2
+}
+
 @dataclass
 class FieldStats:
     fieldName: str
@@ -35,7 +42,7 @@ class SchemaClassifier:
         Phase 1: Determine decision based ONLY on statistics and frequency.
         """
         # 1. The Unknown Gate (Rare Data)
-        if field.frequency < 0.01:
+        if field.frequency < CLASSIFIER_CONFIG["rare_field_threshold"]:
             return {
                 "decision": "UNKNOWN",
                 "confidence": round(1.0 - field.frequency, 3),
@@ -44,8 +51,8 @@ class SchemaClassifier:
 
         # 2. Statistical Merit (Stable & Dense)
         # We define SQL-worthy as: Type stays the same AND it's usually present.
-        is_stable = field.typeStability >= 1.0
-        is_dense = field.frequency >= 0.50
+        is_stable = field.typeStability >= CLASSIFIER_CONFIG["type_stability_threshold"]
+        is_dense = field.frequency >= CLASSIFIER_CONFIG["density_threshold"]
 
         if is_stable and is_dense:
             return {
@@ -131,7 +138,7 @@ def runPipeline():
         internal_nesting_levels = max_depth - depth
         
         # 1. Does this field have > 2 levels of nesting INSIDE it?
-        if internal_nesting_levels > 2:
+        if internal_nesting_levels > CLASSIFIER_CONFIG["max_internal_nesting"]:
             field['decision'] = "MONGO"
             field['reason'] = f"Exiled: Contains {internal_nesting_levels} levels of deep nesting"
             field['confidence'] = 1.0
@@ -144,7 +151,7 @@ def runPipeline():
             if path != p_path and path.startswith(p_path):
                 # If the parent was exiled to Mongo due to deep nesting
                 p_internal_levels = max_descendant_depth.get(p_path, p_meta.get('nesting_depth', 0)) - p_meta.get('nesting_depth', 0)
-                if p_internal_levels > 2:
+                if p_internal_levels > CLASSIFIER_CONFIG["max_internal_nesting"]:
                     field['decision'] = "MONGO"
                     field['reason'] = f"Inherited Exile from deep parent object ({p_path})"
                     field['confidence'] = 1.0
