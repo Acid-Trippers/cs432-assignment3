@@ -13,7 +13,7 @@ import json
 import os
 from src.config import INITIAL_SCHEMA_FILE, ANALYZED_SCHEMA_FILE, METADATA_FILE
 
-def merge_metadata():
+def merge_metadata(is_update=False, n_old=0, n_new=0):
     if not os.path.exists(INITIAL_SCHEMA_FILE):
         print(f"[!] {INITIAL_SCHEMA_FILE} not found.")
         return
@@ -55,16 +55,48 @@ def merge_metadata():
     flatten_schema(initial_schema)
 
     # Merge into analyzed_schema fields
-    for field in analyzed_schema.get('fields', []):
-        f_name = field['field_name']
-        if f_name in user_constraints:
-            field['user_constraints'] = user_constraints[f_name]
-        else:
-            field['user_constraints'] = None
-            # If it's in analyzed but not in initial, it was likely an unmapped field from the buffer.
-            # Buffer fields pass through into cleaned_data.json via fuzzy match or retaining extra fields,
-            # meaning they end up in analyzed_schema.json with user_constraints: null.
-            # This is exactly the signal the classifier expects to treat it as "no schema declaration, fall back to heuristic scoring".
+    # 3. Handle Update (Evolution) vs. Initialise (Fresh)
+    if is_update and os.path.exists(METADATA_FILE):
+        with open(METADATA_FILE, 'r') as f:
+            existing_metadata = json.load(f)
+        
+        existing_fields = {f['field_name']: f for f in existing_metadata.get('fields', [])}
+        
+        # Calculate weights based on your ratio suggestion
+        total_n = n_old + n_new
+        w_old = n_old / total_n if total_n > 0 else 0
+        w_new = n_new / total_n if total_n > 0 else 1
+
+        for new_field in analyzed_schema.get('fields', []):
+            name = new_field['field_name']
+            
+            if name in existing_fields:
+                # Proportional Update for Frequency and Stability
+                old = existing_fields[name]
+                old['frequency'] = (old['frequency'] * w_old) + (new_field['frequency'] * w_new)
+                old['type_stability'] = (old['type_stability'] * w_old) + (new_field['type_stability'] * w_new)
+                
+                # Discovery Logic: Graduate if frequency crosses 0.1
+                if old['frequency'] >= 0.1:
+                    old['is_discovered_buffer'] = False
+                else:
+                    # Keep in buffer if it's not in the initial_schema
+                    old['is_discovered_buffer'] = name not in user_constraints
+            else:
+                # Brand New Field discovered in this batch
+                new_field['user_constraints'] = user_constraints.get(name)
+                # Probation check: Is it common enough yet?
+                new_field['is_discovered_buffer'] = (new_field['frequency'] < 0.1) and (name not in user_constraints)
+                existing_metadata['fields'].append(new_field)
+        
+        analyzed_schema = existing_metadata
+    else:
+        # Initialise Mode: Standard mapping with probation flags
+        for field in analyzed_schema.get('fields', []):
+            name = field['field_name']
+            field['user_constraints'] = user_constraints.get(name)
+            # Flag for buffer if rare and not in initial schema
+            field['is_discovered_buffer'] = (field['frequency'] < 0.1) and (name not in user_constraints)
 
     with open(METADATA_FILE, 'w') as f:
         json.dump(analyzed_schema, f, indent=4)

@@ -103,48 +103,50 @@ def process_in_memory(raw_records, is_fetch=False):
     """Handles the sequential processing of data records in memory."""
     print("[*] Cleaning Data...")
     
-    # Get current counter for ID offset
+    # helper to get offset
     offset = 0
     if os.path.exists(COUNTER_FILE):
         try:
             with open(COUNTER_FILE, 'r') as f:
-                offset = int(f.read().strip() or 0)
-        except (ValueError, IOError):
-            pass
+                offset = int(f.read().strip() or 0) - len(raw_records)
+        except: pass
 
     cleaner = cleaner_mod.DataCleaner()
     cleaned_records = []
     
     for i, record in enumerate(raw_records):
-        # 1. Determine the reference ID
         ref_id = record.get("id", record.get("_id", f"idx_{time.time()}_{i}"))
-        
-        # 2. Clean the record
         cleaned_node = cleaner.clean_recursive(record, cleaner.schema, ref_id)
-        
-        # 3. Explicitly attach the record_id for the database pipeline
         cleaned_node["record_id"] = offset + i 
-        
         cleaned_records.append(cleaned_node)
     
-    # Update counter for next run
-    with open(COUNTER_FILE, 'w') as f:
-        f.write(str(offset + len(raw_records)))
-
+    # Save the cleaned data
     save_checkpoint(CLEANED_DATA_FILE, cleaned_records, append=is_fetch)
     save_checkpoint(BUFFER_FILE, cleaner.buffer, append=is_fetch)
+
+    # TASK: Flush raw ingestion file after successful cleaning
+    if raw_records:
+        with open(RECEIVED_DATA_FILE, 'w') as f:
+            json.dump([], f)
+        print("[*] Received_data flushed.")
 
     print("[*] Profiling Data...")
     analyzer = analyzer_mod.DataAnalyzer()
     analyzer.analyze_records(cleaned_records)
     analyzer.save_analysis(ANALYZED_SCHEMA_FILE)
+    
+    new_total = offset + len(raw_records)
+    with open(COUNTER_FILE, 'w') as f:
+        f.write(str(new_total))
+        
+    return cleaned_records
 
 
 def initialise(count=1000):
     files_to_clean = [
         COUNTER_FILE, RECEIVED_DATA_FILE, CLEANED_DATA_FILE, 
         BUFFER_FILE, ANALYZED_SCHEMA_FILE, METADATA_FILE, 
-        SQL_DATA_FILE, QUERY_FILE, CHECKPOINT_FILE
+        SQL_DATA_FILE, MONGO_DATA_FILE, QUERY_FILE, CHECKPOINT_FILE
     ]
     for f in files_to_clean:
         if os.path.exists(f):
@@ -152,6 +154,8 @@ def initialise(count=1000):
                 os.remove(f)
             else:
                 shutil.rmtree(f)
+    with open(COUNTER_FILE, 'w') as f:
+        f.write("0")
     print("\n[!] Environment reset.")
 
     print("[*] Running Schema Definition...")
@@ -171,7 +175,7 @@ def initialise(count=1000):
     set_checkpoint("metadata")
 
     print("[*] Classifying Schema...")
-    classifier.run_classification()
+    classifier.run_classification(verbose = True)
     set_checkpoint("classify")
     
     print("[*] Routing Data...")
@@ -180,8 +184,8 @@ def initialise(count=1000):
     
     print("[*] SQL Pipeline...")
     set_checkpoint("sql")
-    engine_sql = sql_engine.SQLEngine()
-    sql_pipeline.run_sql_pipeline(engine_sql)
+    # engine_sql = sql_engine.SQLEngine()
+    # sql_pipeline.run_sql_pipeline(engine_sql)
 
 
 def fetch(count=100):
@@ -189,18 +193,47 @@ def fetch(count=100):
         print("[X] ERROR: No metadata found. Run 'initialise' first.")
         return
 
-    print(f"\n[*] Fetching {count} additional records...")
-    raw_records = asyncio.run(ingestion.fetch_data(count))
-    save_checkpoint(RECEIVED_DATA_FILE, raw_records, append=True)
+    batch_size = 100
+    remaining = count
+    print(f"[*] Starting Batch-Fetch for {count} records...")
 
-    process_in_memory(raw_records, is_fetch=True)
+    while remaining > 0:
+        current_batch = min(remaining, batch_size)
+        
+        # 1. Get current count BEFORE processing
+        n_old = 0
+        if os.path.exists(COUNTER_FILE):
+            with open(COUNTER_FILE, 'r') as f:
+                n_old = int(f.read().strip() or 0)
 
-    print("[*] Routing Data...")
-    data_router.route_data()
+        # 2. Fetch and Clean
+        print(f"[*] Fetching chunk of {current_batch}...")
+        raw_records = asyncio.run(ingestion.fetch_data(current_batch))
+        
+        # This saves to cleaned_data.json and flushes received_data.json
+        cleaned_batch = process_in_memory(raw_records, is_fetch=True)
+        
+        # 3. Update Intelligence (Evolution Suite)
+        # We pass n_old and the size of this new batch (n_new)
+        metadata_builder.merge_metadata(is_update=True, n_old=n_old, n_new=len(raw_records))
+        classifier.run_classification(verbose=False)
 
-    print("[*] SQL Pipeline Insert...")
-    engine_sql = sql_engine.SQLEngine()
-    sql_pipeline.run_sql_pipeline(engine_sql)
+        # 4. Route and Flush
+        # (Your updated router will clear cleaned_data.json)
+        print("[*] Sharding Data...")
+        batch_stats = data_router.route_data()
+        
+        if batch_stats:
+            print(f"    >>> Batch Success: {batch_stats['sql']} records to SQL, {batch_stats['mongo']} to Mongo.")
+        
+        # 5. SQL Pipeline (Optional: uncomment if needed per batch)
+        # engine_sql = sql_engine.SQLEngine()
+        # sql_pipeline.run_sql_pipeline(engine_sql)
+
+        remaining -= current_batch
+        print(f"[+] Chunk processed. Total global records: {n_old + current_batch}")
+
+    print(f"[SUCCESS] Fetch complete.")
 
 
 # Removed redundant wait_for_server function

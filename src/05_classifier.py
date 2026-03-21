@@ -30,6 +30,7 @@ class FieldStats:
     cardinality: float
     isNested: bool
     isArray: bool
+    is_discovered_buffer: bool = False
     nestingDepth: int = 0
     parentPath: Optional[str] = None
 
@@ -39,9 +40,17 @@ class SchemaClassifier:
 
     def classify_statistically(self, field: FieldStats) -> Dict[str, Any]:
         """
-        Phase 1: Determine decision based ONLY on statistics and frequency.
+        Phase 1: Determine decision based on statistics and discovery flags.
         """
-        # 1. The Unknown Gate (Rare Data)
+        # Fix: Use attribute access on the dataclass
+        if field.is_discovered_buffer is True:
+            return {
+                "decision": "BUFFER",
+                "confidence": 1.0,
+                "reason": "Probation: Frequency < 0.1 (Discovery Logic)"
+            }
+
+        # Existing frequency logic (Rare Data)
         if field.frequency < CLASSIFIER_CONFIG["rare_field_threshold"]:
             return {
                 "decision": "UNKNOWN",
@@ -49,8 +58,7 @@ class SchemaClassifier:
                 "reason": f"Rare field (seen in only {field.frequency:.1%})"
             }
 
-        # 2. Statistical Merit (Stable & Dense)
-        # We define SQL-worthy as: Type stays the same AND it's usually present.
+        # Restoring the SQL vs MONGO logic
         is_stable = field.typeStability >= CLASSIFIER_CONFIG["type_stability_threshold"]
         is_dense = field.frequency >= CLASSIFIER_CONFIG["density_threshold"]
 
@@ -66,8 +74,8 @@ class SchemaClassifier:
                 "confidence": 0.8,
                 "reason": f"Unstable or Sparse (Freq: {field.frequency:.1%}, Stability: {field.typeStability:.1%})"
             }
-
-def runPipeline():
+        
+def runPipeline(verbose=True):
     if not os.path.exists(METADATA_FILE):
         print(f"[X] ERROR: {METADATA_FILE} not found.")
         return
@@ -88,6 +96,7 @@ def runPipeline():
             cardinality=field['cardinality'],
             isNested=field['is_nested'],
             isArray=field['is_array'],
+            is_discovered_buffer=field.get('is_discovered_buffer', False),
             nestingDepth=field.get('nesting_depth', 0),
             parentPath=field.get('parent_path', None)
         )
@@ -161,35 +170,68 @@ def runPipeline():
         if inherited_exile:
             continue
 
-    # --- FINAL SUMMARY & OUTPUT ---
-    sql_count = 0
-    mongo_count = 0
-    unknown_count = 0
+# --- FINAL SUMMARY & EVOLUTION REPORT ---
+    old_decisions = {}
+    if os.path.exists(METADATA_FILE):
+        try:
+            with open(METADATA_FILE, 'r', encoding='utf-8') as f:
+                old_meta = json.load(f)
+                old_decisions = {f['field_name']: f.get('decision') for f in old_meta.get('fields', [])}
+        except: pass
 
-    print("\n" + "="*80)
-    print("HYBRID CLASSIFICATION RESULTS")
-    print("="*80)
-    print(f"{'Field':<40} {'Decision':<10} {'Reason'}")
-    print("-"*80)
-    
-    for field in analyzed_data['fields']:
-        dec = field['decision']
-        if dec == 'SQL': sql_count += 1
-        elif dec == 'MONGO': mongo_count += 1
-        else: unknown_count += 1
+    # MODE A: Full Table (Initialise)
+    if verbose:
+        print("\n" + "="*80)
+        print("HYBRID CLASSIFICATION RESULTS (FULL TABLE)")
+        print("="*80)
+        print(f"{'Field':<40} {'Decision':<10} {'Reason'}")
+        print("-"*80)
         
-        print(f"{field['field_name']:<40} {dec:<10} {field.get('reason', '')}")
-    
-    print("-"*80)
-    print(f"SQL: {sql_count} | Mongo: {mongo_count} | Unknown: {unknown_count}")
-    print("="*80)
+        counts = {"SQL": 0, "MONGO": 0, "UNKNOWN": 0, "BUFFER": 0}
+        for field in analyzed_data['fields']:
+            dec = field['decision']
+            counts[dec] = counts.get(dec, 0) + 1
+            print(f"{field['field_name']:<40} {dec:<10} {field.get('reason', '')}")
+        
+        print("-"*80)
+        print(f"SQL: {counts['SQL']} | Mongo: {counts['MONGO']} | Buffer: {counts['BUFFER']}")
+        print("="*80)
 
+    # MODE B: Evolution Only (Fetch)
+    else:
+        print("\n" + "="*50)
+        print("      SCHEMA EVOLUTION REPORT")
+        print("="*50)
+        changes_found = False
+        for field in analyzed_data['fields']:
+            name = field['field_name']
+            new_dec = field['decision']
+            old_dec = old_decisions.get(name)
+            
+            if old_dec and new_dec != old_dec:
+                print(f"[!] GRADUATION: '{name}' {old_dec} -> {new_dec}")
+                changes_found = True
+            elif not old_dec:
+                print(f"[+] NEW FIELD:  '{name}' -> {new_dec}")
+                changes_found = True
+
+        if not changes_found:
+            print("[~] No schema changes. Evolution stable.")
+        print("="*50)
+
+    sql_total = sum(1 for f in analyzed_data['fields'] if f['decision'] == 'SQL')
+    mongo_total = sum(1 for f in analyzed_data['fields'] if f['decision'] == 'MONGO')
+    buffer_total = sum(1 for f in analyzed_data['fields'] if f['decision'] == 'BUFFER')
+
+    print(f"\n[GLOBAL STATE] SQL Columns: {sql_total} | Mongo Fields: {mongo_total} | Buffered: {buffer_total}")
+    print("="*50)
+
+    # Final Save
     with open(METADATA_FILE, 'w', encoding='utf-8') as f:
         json.dump(analyzed_data, f, indent=4)
-    print(f"\n[+] Metadata finalized at {METADATA_FILE}")
 
-def run_classification():
-    runPipeline()
+def run_classification(verbose=True):
+    runPipeline(verbose=verbose)
 
 if __name__ == "__main__":
-    run_classification()
+    run_classification(verbose=True)

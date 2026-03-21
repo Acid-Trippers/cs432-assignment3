@@ -208,7 +208,6 @@ def run_cleaning_pipeline():
                 # Use sys_ingested_time or index as temporary ID for the buffer
                 parent_id = raw_record.get("id", raw_record.get("_id", f"idx_{i}"))
                 cleaned_record = cleaner.clean_recursive(raw_record, cleaner.schema, parent_id)
-                cleaned_record["record_id"] = i  # Add a unique primary key across datasets
                 all_cleaned_records.append(cleaned_record)
             except Exception as e:
                 print(f"[!] Error cleaning record {i}: {e}")
