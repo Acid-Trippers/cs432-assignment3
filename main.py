@@ -141,6 +141,36 @@ def process_in_memory(raw_records, is_fetch=False):
         
     return cleaned_records
 
+def clean_databases():
+    """Drops all SQL tables and the MongoDB database for a fresh start."""
+    print("[*] Clearing databases for a clean slate...")
+    
+    # 1. Clear MongoDB
+    try:
+        from pymongo import MongoClient
+        mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+        db_name = os.getenv("MONGO_DB_NAME", "cs432_db")
+        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
+        
+        # Dropping the database entirely ensures no leftover collections
+        client.drop_database(db_name)
+        print("[+] MongoDB 'cs432_db' database dropped.")
+    except Exception as e:
+        print(f"[!] Warning: Failed to clean MongoDB: {e}")
+
+    # 2. Clear SQL
+    try:
+        from sqlalchemy import create_engine
+        from src.sql_schema_definer import Base
+        
+        db_url = os.getenv("POSTGRES_URI", "postgresql://admin:secret@localhost:5433/cs432_db")
+        engine = create_engine(db_url)
+        
+        # Drop all tables registered in the SQLAlchemy Base metadata
+        Base.metadata.drop_all(bind=engine)
+        print("[+] SQL database tables dropped.")
+    except Exception as e:
+        print(f"[!] Warning: Failed to clean SQL database: {e}")
 
 def initialise(count=1000):
     files_to_clean = [
@@ -158,6 +188,9 @@ def initialise(count=1000):
         f.write("0")
     print("\n[!] Environment reset.")
 
+    #THIS CLEARS BOTH DATABASES
+    clean_databases()
+    
     print("[*] Running Schema Definition...")
     schema_definition.main()
     
