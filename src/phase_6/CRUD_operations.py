@@ -21,6 +21,56 @@ db_name = os.getenv("MONGO_DB_NAME", "cs432_db")
 mongo_client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
 mongo_db = mongo_client[db_name]
 
+def merge_results_by_record_id(results_by_db):
+    """
+    Merge results from multiple databases into a single output keyed by record_id.
+    Each record_id maps to a merged document combining fields from all sources.
+    
+    Input:
+        results_by_db: {"SQL": [...], "MongoDB": [...], "Unknown": [...]}
+    
+    Output:
+        {"record_id_1": {merged fields}, "record_id_2": {merged fields}, ...}
+    """
+    merged = {}
+    
+    # Process SQL results
+    for record in results_by_db.get("SQL", []):
+        record_id = record.get("record_id")
+        if record_id is not None:
+            if record_id not in merged:
+                merged[record_id] = {}
+            merged[record_id].update(record)
+            merged[record_id]["_source"] = merged[record_id].get("_source", [])
+            if "SQL" not in merged[record_id]["_source"]:
+                merged[record_id]["_source"].append("SQL")
+    
+    # Process MongoDB results
+    for record in results_by_db.get("MongoDB", []):
+        record_id = record.get("record_id") or record.get("_id")
+        if record_id is not None:
+            if record_id not in merged:
+                merged[record_id] = {}
+            # For MongoDB, convert ObjectId to string if needed
+            mongo_record = {k: str(v) if k == "_id" else v for k, v in record.items()}
+            merged[record_id].update(mongo_record)
+            merged[record_id]["_source"] = merged[record_id].get("_source", [])
+            if "MongoDB" not in merged[record_id]["_source"]:
+                merged[record_id]["_source"].append("MongoDB")
+    
+    # Process Unknown results
+    for record in results_by_db.get("Unknown", []):
+        record_id = record.get("record_id")
+        if record_id is not None:
+            if record_id not in merged:
+                merged[record_id] = {}
+            merged[record_id].update(record)
+            merged[record_id]["_source"] = merged[record_id].get("_source", [])
+            if "Unknown" not in merged[record_id]["_source"]:
+                merged[record_id]["_source"].append("Unknown")
+    
+    return merged
+
 def read_operation(parsed_query, db_analysis):
     """
     Read records using two-phase approach:
@@ -77,9 +127,10 @@ def read_operation(parsed_query, db_analysis):
             collection = mongo_db[entity]
             mongo_filters = {k: v for k, v in filters.items() if field_locations.get(k) == "MongoDB"}
             
-            projection = {"record_id": 1}
+            # Important: In MongoDB, record_id is stored as _id
+            projection = {"_id": 1}
             docs = list(collection.find(mongo_filters, projection))
-            record_ids = [doc.get("record_id") for doc in docs if "record_id" in doc]
+            record_ids = [doc.get("_id") for doc in docs if "_id" in doc]
             matching_record_ids["MongoDB"] = record_ids
             print(f"[MongoDB] Found {len(record_ids)} matching record_ids: {record_ids[:5]}{'...' if len(record_ids) > 5 else ''}")
         except Exception as e:
@@ -143,9 +194,10 @@ def read_operation(parsed_query, db_analysis):
     if "MongoDB" in databases_needed and matching_record_ids.get("MongoDB"):
         try:
             collection = mongo_db[entity]
-            records = list(collection.find({"record_id": {"$in": matching_record_ids["MongoDB"]}}))
+            # Important: Use _id field for MongoDB queries since record_id is stored as _id
+            records = list(collection.find({"_id": {"$in": matching_record_ids["MongoDB"]}}))
             results["MongoDB"] = [
-                {"_id": str(r["_id"]), **{k: v for k, v in r.items() if k != "_id"}}
+                {"record_id": r["_id"], **{k: v for k, v in r.items() if k != "_id"}}
                 for r in records
             ]
             print(f"[MongoDB] Fetched {len(results['MongoDB'])} full documents")
@@ -181,7 +233,18 @@ def read_operation(parsed_query, db_analysis):
     print(f"  Unknown: {len(results.get('Unknown', []))}")
     print(f"{'='*60}\n")
     
-    return {"operation": "READ", "entity": entity, "results": results}
+    # ============================================================================
+    # PHASE 3: MERGE results by record_id
+    # ============================================================================
+    print(f"\n{'─'*60}")
+    print("[PHASE 3] Merging results by record_id...")
+    print(f"{'─'*60}")
+    
+    merged_results = merge_results_by_record_id(results)
+    print(f"[MERGE] Merged {len(merged_results)} unique records")
+    print(f"[MERGE] Sample keys: {list(merged_results.keys())[:5]}")
+    
+    return {"operation": "READ", "entity": entity, "data": merged_results}
     
 def create_operation(parsed_query, db_analysis):
     """
@@ -329,14 +392,15 @@ def create_operation(parsed_query, db_analysis):
     
 def update_operation(parsed_query, db_analysis):
     """
-    Update records using a three-phase approach:
-    Phase 1: Route payload fields based on metadata
-    Phase 2: Find all matching record_ids based on filters
-    Phase 3: Apply the updates to the respective databases
-    """
+    Update records using two-phase approach:
+    Phase 1: Find all matching record_ids based on filters
+    Phase 2: Update records using those record_ids and new payload values
     
+    If filters = {}, updates ALL records from all databases.
+    Only specified columns in payload are updated.
+    """
     print(f"\n{'='*60}")
-    print("[UPDATE OPERATION - HYBRID ROUTING & EXECUTION]")
+    print("[UPDATE OPERATION - TWO PHASE APPROACH]")
     print(f"{'='*60}")
     
     entity = parsed_query.get("entity")
@@ -345,24 +409,91 @@ def update_operation(parsed_query, db_analysis):
     databases_needed = db_analysis.get("databases_needed", [])
     field_locations = db_analysis.get("field_locations", {})
     
-    if not payload:
-        print("[WARNING] No payload provided for update.")
-        return {"operation": "UPDATE", "status": "failed", "reason": "empty payload"}
-        
-    print(f"\n[DEBUG] Entity: {entity}, Filters: {filters}")
-    print(f"[DEBUG] Payload Size: {len(payload)} fields")
-
+    print(f"\n[DEBUG] Entity: {entity}, Filters: {filters}, Payload: {payload}, Databases: {databases_needed}")
+    
+    if not filters:
+        print(f"\n[WARNING] No filters specified - will UPDATE ALL records in all databases")
+    
     # ============================================================================
-    # PHASE 1: ROUTE PAYLOAD FIELDS
+    # PHASE 1: FIND record_ids matching filters
     # ============================================================================
     print(f"\n{'─'*60}")
-    print("[PHASE 1] Routing update payload fields...")
+    print("[PHASE 1] Finding matching record_ids to update...")
     print(f"{'─'*60}")
-
-    sql_payload = {}
-    mongo_payload = {}
-    unknown_payload = {}
     
+    matching_record_ids = {}
+    
+    # Query SQL for matching record_ids
+    if "SQL" in databases_needed and sql_available:
+        try:
+            Model = sql_engine.models.get(entity)
+            if Model:
+                query = sql_engine.session.query(Model.record_id)
+                
+                # Apply SQL filters
+                sql_filters = {k: v for k, v in filters.items() if field_locations.get(k) == "SQL"}
+                if sql_filters:
+                    for field_name, field_value in sql_filters.items():
+                        query = query.filter(getattr(Model, field_name) == field_value)
+                        print(f"[SQL Filter] {field_name} = {field_value}")
+                
+                record_ids = [rid[0] for rid in query.all()]
+                matching_record_ids["SQL"] = record_ids
+                print(f"[SQL] Found {len(record_ids)} matching record_ids: {record_ids[:5]}{'...' if len(record_ids) > 5 else ''}")
+        except Exception as e:
+            print(f"[SQL] Error in Phase 1: {e}")
+            matching_record_ids["SQL"] = []
+    elif "SQL" in databases_needed:
+        print(f"[SQL] Skipped (SQL Engine not available)")
+        matching_record_ids["SQL"] = []
+    
+    # Query MongoDB for matching record_ids
+    if "MongoDB" in databases_needed:
+        try:
+            collection = mongo_db[entity]
+            mongo_filters = {k: v for k, v in filters.items() if field_locations.get(k) == "MongoDB"}
+            
+            # Important: In MongoDB, record_id is stored as _id
+            projection = {"_id": 1}
+            docs = list(collection.find(mongo_filters, projection))
+            record_ids = [doc.get("_id") for doc in docs if "_id" in doc]
+            matching_record_ids["MongoDB"] = record_ids
+            print(f"[MongoDB] Found {len(record_ids)} matching record_ids: {record_ids[:5]}{'...' if len(record_ids) > 5 else ''}")
+        except Exception as e:
+            print(f"[MongoDB] Error in Phase 1: {e}")
+            matching_record_ids["MongoDB"] = []
+    
+    # Query Unknown for matching record_ids
+    if "Unknown" in databases_needed:
+        try:
+            unknown_file = os.path.join(DATA_DIR, "unknown_data.json")
+            if os.path.exists(unknown_file):
+                with open(unknown_file, 'r') as f:
+                    data = json.load(f)
+                
+                unknown_filters = {k: v for k, v in filters.items() if field_locations.get(k) == "Unknown"}
+                all_records = data if isinstance(data, list) else [data]
+                
+                if unknown_filters:
+                    matching = [r for r in all_records if all(r.get(k) == v for k, v in unknown_filters.items())]
+                else:
+                    matching = all_records
+                
+                record_ids = [r.get("record_id") for r in matching if "record_id" in r]
+                matching_record_ids["Unknown"] = record_ids
+                print(f"[Unknown] Found {len(record_ids)} matching record_ids: {record_ids[:5]}{'...' if len(record_ids) > 5 else ''}")
+        except Exception as e:
+            print(f"[Unknown] Error in Phase 1: {e}")
+            matching_record_ids["Unknown"] = []
+    
+    # ============================================================================
+    # PHASE 2: UPDATE records using record_ids
+    # ============================================================================
+    print(f"\n{'─'*60}")
+    print("[PHASE 2] Updating records by record_id...")
+    print(f"{'─'*60}")
+    
+    # Load metadata for field routing
     try:
         with open(METADATA_FILE, 'r') as f:
             metadata = json.load(f)
@@ -370,135 +501,81 @@ def update_operation(parsed_query, db_analysis):
         field_map = {f.get("field_name"): f.get("decision") for f in fields}
         strategy_map = determineMongoStrategy(fields)
     except Exception as e:
-        print(f"[WARNING] Could not load metadata: {e}")
+        print(f"[WARNING] Could not load metadata, falling back to Unknown: {e}")
         field_map = {}
         strategy_map = {}
-
+    
+    # Route payload fields to appropriate databases
+    sql_updates = {}
+    mongo_updates = {}
+    unknown_updates = {}
+    
     for key, value in payload.items():
         if key == "record_id":
-            continue  # Do not allow updating the primary key
-            
+            continue
+        
         decision = field_map.get(key, "UNKNOWN")
         
         if decision in ["SQL", "BOTH"]:
-            sql_payload[key] = value
+            sql_updates[key] = value
         if decision in ["MONGO", "BOTH"]:
-            mongo_payload[key] = value
+            mongo_updates[key] = value
         if decision == "UNKNOWN":
-            unknown_payload[key] = value
-            
-    print(f"[Routing] SQL: {len(sql_payload)} fields, MongoDB: {len(mongo_payload)} fields, Unknown: {len(unknown_payload)} fields")
-
-    # ============================================================================
-    # PHASE 2: FIND record_ids matching filters
-    # ============================================================================
-    print(f"\n{'─'*60}")
-    print("[PHASE 2] Finding matching record_ids to update...")
-    print(f"{'─'*60}")
+            unknown_updates[key] = value
     
-    matching_record_ids = set()
+    print(f"[Routing] SQL: {len(sql_updates)} fields, MongoDB: {len(mongo_updates)} fields, Unknown: {len(unknown_updates)} fields")
     
-    # Query SQL
-    if "SQL" in databases_needed and sql_available:
-        try:
-            Model = sql_engine.models.get(entity)
-            if Model:
-                query = sql_engine.session.query(Model.record_id)
-                sql_filters = {k: v for k, v in filters.items() if field_locations.get(k) == "SQL"}
-                for field_name, field_value in sql_filters.items():
-                    query = query.filter(getattr(Model, field_name) == field_value)
-                
-                record_ids = [rid[0] for rid in query.all()]
-                matching_record_ids.update(record_ids)
-                print(f"[SQL] Found {len(record_ids)} matching record_ids")
-        except Exception as e:
-            print(f"[SQL] Error finding records: {e}")
-
-    # Query MongoDB
-    if "MongoDB" in databases_needed:
-        try:
-            collection = mongo_db[entity]
-            mongo_filters = {k: v for k, v in filters.items() if field_locations.get(k) == "MongoDB"}
-            docs = list(collection.find(mongo_filters, {"record_id": 1}))
-            record_ids = [doc.get("record_id") for doc in docs if "record_id" in doc]
-            matching_record_ids.update(record_ids)
-            print(f"[MongoDB] Found {len(record_ids)} matching record_ids")
-        except Exception as e:
-            print(f"[MongoDB] Error finding records: {e}")
-
-    # Query Unknown
-    if "Unknown" in databases_needed:
-        try:
-            unknown_file = os.path.join(DATA_DIR, "unknown_data.json")
-            if os.path.exists(unknown_file):
-                with open(unknown_file, 'r') as f:
-                    data = json.load(f)
-                unknown_filters = {k: v for k, v in filters.items() if field_locations.get(k) == "Unknown"}
-                all_records = data if isinstance(data, list) else [data]
-                if unknown_filters:
-                    matching = [r for r in all_records if all(r.get(k) == v for k, v in unknown_filters.items())]
-                else:
-                    matching = all_records
-                record_ids = [r.get("record_id") for r in matching if "record_id" in r]
-                matching_record_ids.update(record_ids)
-                print(f"[Unknown] Found {len(record_ids)} matching record_ids")
-        except Exception as e:
-            print(f"[Unknown] Error finding records: {e}")
-
-    # If filters were empty, we might not have collected IDs, but UPDATE usually requires filters.
-    if not matching_record_ids and filters:
-        print("[INFO] No matching records found to update.")
-        return {"operation": "UPDATE", "status": "success", "updated_count": 0}
-
-    record_ids_list = list(matching_record_ids)
-
-    # ============================================================================
-    # PHASE 3: APPLY UPDATES
-    # ============================================================================
-    print(f"\n{'─'*60}")
-    print(f"[PHASE 3] Applying updates to {len(record_ids_list)} records...")
-    print(f"{'─'*60}")
+    updated_summary = {}
+    total_updated = 0
     
-    update_summary = {}
-
-    # Update SQL
-    if sql_payload and sql_available and record_ids_list:
+    # Update SQL records
+    if "SQL" in databases_needed and sql_available and matching_record_ids.get("SQL") and sql_updates:
         try:
             Model = sql_engine.models.get(entity)
             if Model:
                 update_query = sql_engine.session.query(Model).filter(
-                    Model.record_id.in_(record_ids_list)
+                    Model.record_id.in_(matching_record_ids["SQL"])
                 )
+                count = update_query.count()
                 
-                # SQLAlchemy bulk update
-                count = update_query.update(sql_payload, synchronize_session=False)
+                # Update each field
+                for field_name, field_value in sql_updates.items():
+                    try:
+                        update_query.update({getattr(Model, field_name): field_value})
+                    except Exception as e:
+                        print(f"[SQL] Could not update field {field_name}: {e}")
+                
                 sql_engine.session.commit()
-                update_summary["SQL"] = count
-                print(f"[SQL] Updated {count} records")
+                updated_summary["SQL"] = count
+                total_updated += count
+                print(f"[SQL] Updated {count} records with {len(sql_updates)} fields")
         except Exception as e:
-            print(f"[SQL] Error applying update: {e}")
+            print(f"[SQL] Error in Phase 2: {e}")
             sql_engine.session.rollback()
-            update_summary["SQL"] = 0
-
-    # Update MongoDB
-    if mongo_payload and record_ids_list:
+            updated_summary["SQL"] = 0
+    else:
+        updated_summary["SQL"] = 0
+    
+    # Update MongoDB documents
+    if "MongoDB" in databases_needed and matching_record_ids.get("MongoDB") and mongo_updates:
         try:
             collection = mongo_db[entity]
-            # Process the payload to handle any necessary embedding/referencing structures
-            processed_mongo_payload = processNode(mongo_payload, "", mongo_db, strategy_map)
-            
+            # Important: Use _id for MongoDB queries since record_id is stored as _id
             result = collection.update_many(
-                {"record_id": {"$in": record_ids_list}},
-                {"$set": processed_mongo_payload}
+                {"_id": {"$in": matching_record_ids["MongoDB"]}},
+                {"$set": mongo_updates}
             )
-            update_summary["MongoDB"] = result.modified_count
-            print(f"[MongoDB] Updated {result.modified_count} documents")
+            updated_summary["MongoDB"] = result.modified_count
+            total_updated += result.modified_count
+            print(f"[MongoDB] Updated {result.modified_count} documents with {len(mongo_updates)} fields")
         except Exception as e:
-            print(f"[MongoDB] Error applying update: {e}")
-            update_summary["MongoDB"] = 0
-
-    # Update Unknown
-    if unknown_payload and record_ids_list:
+            print(f"[MongoDB] Error in Phase 2: {e}")
+            updated_summary["MongoDB"] = 0
+    else:
+        updated_summary["MongoDB"] = 0
+    
+    # Update Unknown records
+    if "Unknown" in databases_needed and matching_record_ids.get("Unknown") and unknown_updates:
         try:
             unknown_file = os.path.join(DATA_DIR, "unknown_data.json")
             if os.path.exists(unknown_file):
@@ -506,35 +583,43 @@ def update_operation(parsed_query, db_analysis):
                     data = json.load(f)
                 
                 all_records = data if isinstance(data, list) else [data]
-                update_count = 0
                 
-                for r in all_records:
-                    if r.get("record_id") in record_ids_list:
-                        r.update(unknown_payload)
-                        update_count += 1
-                        
+                # Update matching records
+                updated_count = 0
+                for record in all_records:
+                    if record.get("record_id") in matching_record_ids["Unknown"]:
+                        for key, value in unknown_updates.items():
+                            record[key] = value
+                        updated_count += 1
+                
+                # Write back the updated records
                 with open(unknown_file, 'w') as f:
                     json.dump(all_records, f, indent=2)
-                    
-                update_summary["Unknown"] = update_count
-                print(f"[Unknown] Updated {update_count} records")
+                
+                updated_summary["Unknown"] = updated_count
+                total_updated += updated_count
+                print(f"[Unknown] Updated {updated_count} records with {len(unknown_updates)} fields")
         except Exception as e:
-            print(f"[Unknown] Error applying update: {e}")
-            update_summary["Unknown"] = 0
-
+            print(f"[Unknown] Error in Phase 2: {e}")
+            updated_summary["Unknown"] = 0
+    else:
+        updated_summary["Unknown"] = 0
+    
     print(f"\n{'='*60}")
-    print("[SUMMARY] Update Operation Completed")
-    print(f"  SQL: {update_summary.get('SQL', 0)} updated")
-    print(f"  MongoDB: {update_summary.get('MongoDB', 0)} updated")
-    print(f"  Unknown: {update_summary.get('Unknown', 0)} updated")
+    print("[SUMMARY] Total records updated:")
+    print(f"  SQL: {updated_summary.get('SQL', 0)}")
+    print(f"  MongoDB: {updated_summary.get('MongoDB', 0)}")
+    print(f"  Unknown: {updated_summary.get('Unknown', 0)}")
+    print(f"  TOTAL: {total_updated}")
     print(f"{'='*60}\n")
-
+    
     return {
         "operation": "UPDATE",
-        "entity": entity,
         "status": "success",
-        "matched_records": len(record_ids_list),
-        "updates_applied": update_summary
+        "entity": entity,
+        "filters_applied": filters,
+        "updated_by_database": updated_summary,
+        "total_updated": total_updated
     }
     
 def delete_operation(parsed_query, db_analysis):
@@ -599,9 +684,10 @@ def delete_operation(parsed_query, db_analysis):
             collection = mongo_db[entity]
             mongo_filters = {k: v for k, v in filters.items() if field_locations.get(k) == "MongoDB"}
             
-            projection = {"record_id": 1}
+            # Important: In MongoDB, record_id is stored as _id
+            projection = {"_id": 1}
             docs = list(collection.find(mongo_filters, projection))
-            record_ids = [doc.get("record_id") for doc in docs if "record_id" in doc]
+            record_ids = [doc.get("_id") for doc in docs if "_id" in doc]
             matching_record_ids["MongoDB"] = record_ids
             print(f"[MongoDB] Found {len(record_ids)} matching record_ids: {record_ids[:5]}{'...' if len(record_ids) > 5 else ''}")
         except Exception as e:
@@ -666,7 +752,8 @@ def delete_operation(parsed_query, db_analysis):
     if "MongoDB" in databases_needed and matching_record_ids.get("MongoDB"):
         try:
             collection = mongo_db[entity]
-            result = collection.delete_many({"record_id": {"$in": matching_record_ids["MongoDB"]}})
+            # Important: Use _id for MongoDB queries since record_id is stored as _id
+            result = collection.delete_many({"_id": {"$in": matching_record_ids["MongoDB"]}})
             deleted_summary["MongoDB"] = result.deleted_count
             total_deleted += result.deleted_count
             print(f"[MongoDB] Deleted {result.deleted_count} documents")
