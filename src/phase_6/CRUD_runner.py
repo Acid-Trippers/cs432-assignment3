@@ -1,5 +1,5 @@
 import json
-from .config import QUERY_FILE, METADATA_FILE, QUERY_OUTPUT_FILE
+from src.config import QUERY_FILE, METADATA_FILE, QUERY_OUTPUT_FILE
 from .CRUD_operations import create_operation, read_operation, update_operation, delete_operation
 
 def query_parser():

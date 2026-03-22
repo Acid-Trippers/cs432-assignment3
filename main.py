@@ -14,18 +14,18 @@ from src.config import *
 
 CHECKPOINT_FILE = os.path.join(DATA_DIR, "pipeline_checkpoint.json")
 
-schema_definition = importlib.import_module("src.00_schema_definition")
-ingestion = importlib.import_module("src.01_ingestion")
-cleaner_mod = importlib.import_module("src.02_cleaner")
-analyzer_mod = importlib.import_module("src.03_analyzer")
-metadata_builder = importlib.import_module("src.04_metadata_builder")
-classifier = importlib.import_module("src.05_classifier")
-data_router = importlib.import_module("src.06_router")
-sql_schema_definer = importlib.import_module("src.sql_schema_definer")
-sql_engine = importlib.import_module("src.sql_engine")
-sql_pipeline = importlib.import_module("src.sql_pipeline")
-crud_json_reader = importlib.import_module("src.CRUD_json_reader")
-crud_runner = importlib.import_module("src.CRUD_runner")
+schema_definition = importlib.import_module("src.phases_1_to_4.00_schema_definition")
+ingestion = importlib.import_module("src.phases_1_to_4.01_ingestion")
+cleaner_mod = importlib.import_module("src.phases_1_to_4.02_cleaner")
+analyzer_mod = importlib.import_module("src.phases_1_to_4.03_analyzer")
+metadata_builder = importlib.import_module("src.phases_1_to_4.04_metadata_builder")
+classifier = importlib.import_module("src.phases_1_to_4.05_classifier")
+data_router = importlib.import_module("src.phases_1_to_4.06_router")
+sql_schema_definer = importlib.import_module("src.phase_5.sql_schema_definer")
+sql_engine = importlib.import_module("src.phase_5.sql_engine")
+sql_pipeline = importlib.import_module("src.phase_5.sql_pipeline")
+crud_json_reader = importlib.import_module("src.phase_6.CRUD_json_reader")
+crud_runner = importlib.import_module("src.phase_6.CRUD_runner")
 
 
 def start_docker():
@@ -162,7 +162,7 @@ def clean_databases():
     # 2. Clear SQL
     try:
         from sqlalchemy import create_engine
-        from src.sql_schema_definer import Base
+        from src.phase_5.sql_schema_definer import Base
         
         # Use the DATABASE_URL from config 
         engine = create_engine(DATABASE_URL)

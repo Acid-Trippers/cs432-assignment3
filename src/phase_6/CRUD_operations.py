@@ -1,11 +1,10 @@
 import json
 import os
 import time
-from .config import DATA_DIR, METADATA_FILE
-from .sql_engine import SQLEngine
-from .mongo_engine import determineMongoStrategy, processNode
+from src.config import DATA_DIR, METADATA_FILE, COUNTER_FILE
+from src.phase_5.sql_engine import SQLEngine
+from src.phase_5.mongo_engine import determineMongoStrategy, processNode
 from pymongo import MongoClient
-from .config import DATA_DIR, METADATA_FILE, COUNTER_FILE
 
 # Initialize SQL Engine gracefully (non-blocking if PostgreSQL unavailable)
 sql_engine = SQLEngine()
