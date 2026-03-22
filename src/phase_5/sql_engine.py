@@ -130,8 +130,6 @@ class SQLEngine:
             return True
         except Exception as e:
             logger.error(f"Failed to initialize SQL Engine: {e}")
-            import traceback
-            traceback.print_exc()
             return False
 
     def _build_relationships(self):
@@ -172,8 +170,6 @@ class SQLEngine:
         except Exception as e:
             logger.error(f"Error inserting record: {e}")
             self.session.rollback()
-            import traceback
-            traceback.print_exc()
             return None
 
     def bulk_insert_from_file(self, json_file: str) -> Tuple[int, int]:

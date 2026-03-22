@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import importlib
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -11,6 +12,11 @@ import httpx
 
 import project_config
 from src.config import *
+
+# Suppress noisy logs from SQLAlchemy and pymongo when DBs are not reachable
+logging.getLogger('sqlalchemy').setLevel(logging.CRITICAL)
+logging.getLogger('pymongo').setLevel(logging.CRITICAL)
+logging.getLogger('src.phase_5.sql_engine').setLevel(logging.CRITICAL)
 
 CHECKPOINT_FILE = os.path.join(DATA_DIR, "pipeline_checkpoint.json")
 
@@ -152,7 +158,7 @@ def clean_databases():
     try:
         from pymongo import MongoClient
         client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=2000)
-        client.server_info()  # ADD THIS — raises exception immediately if unreachable
+        client.server_info()  # raises exception immediately if unreachable
         client.drop_database(MONGO_DB_NAME)
         print(f"[+] MongoDB '{MONGO_DB_NAME}' database dropped.")
     except Exception as e:
@@ -160,12 +166,12 @@ def clean_databases():
 
     # 2. Clear SQL
     try:
-        from sqlalchemy import create_engine
-        from src.phase_5.sql_schema_definer import Base
-        engine = create_engine(DATABASE_URL, connect_args={"connect_timeout": 2})  # ADD connect_timeout
-        with engine.connect():  # ADD THIS — raises exception immediately if unreachable
-            pass
-        Base.metadata.drop_all(bind=engine)
+        from sqlalchemy import create_engine, text
+        engine = create_engine(DATABASE_URL, connect_args={"connect_timeout": 2})
+        with engine.connect() as conn:
+            # Drop all tables by querying information_schema instead of using Base.metadata
+            conn.execute(text("DROP SCHEMA public CASCADE; CREATE SCHEMA public;"))
+            conn.commit()
         print("[+] SQL database tables dropped.")
     except Exception as e:
         print(f"[!] Warning: PostgreSQL not reachable, skipping: {e}")
