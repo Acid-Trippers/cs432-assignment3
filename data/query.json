@@ -1,0 +1,15 @@
+{
+    "operation": "CREATE",
+    "entity": "main_records",
+    "payload": {
+        "username": "adityashah",
+        "city": "Ahmedabad",
+        "country": "India",
+        "subscription": "premium",
+        "device_model": "iPhone 15",
+        "language": "en",
+        "email": "aditya@iitgn.ac.in",
+        "mood": "happy",
+        "heart_rate": 72
+    }
+}

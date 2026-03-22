@@ -1,0 +1,12 @@
+{
+  "operation": "CREATE",
+  "entity": "main_records",
+  "status": "success",
+  "details": {
+    "record_id": 1250,
+    "inserted_into": [
+      "SQL",
+      "MONGO"
+    ]
+  }
+}
