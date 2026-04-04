@@ -61,7 +61,7 @@ def processMongoData(mongoData, strategyMap, dbInstance):
     success_count = 0
     fail_count = 0
 
-    for record in mongoData:
+    for idx, record in enumerate(mongoData):
         try:
             extractedRecordId = record.pop("record_id", None)
             processedRecord = processNode(record, "", dbInstance, strategyMap)
@@ -80,9 +80,14 @@ def processMongoData(mongoData, strategyMap, dbInstance):
                 upsert=True
             )
             success_count += 1
+            
+            # Progress indicator every 100 records
+            if (idx + 1) % 100 == 0:
+                print(f"[*] Processed {idx + 1}/{len(mongoData)} records...", flush=True)
+                
         except Exception as e:
             fail_count += 1
-            print(f"[!] Failed to upsert Mongo record: {e}")
+            print(f"[!] Failed to upsert Mongo record: {e}", flush=True)
 
     return success_count, fail_count
 
@@ -90,9 +95,9 @@ def processMongoData(mongoData, strategyMap, dbInstance):
 def runMongoEngine():
     from src.config import MONGO_URI, MONGO_DB_NAME, METADATA_FILE, MONGO_DATA_FILE
 
-    print("\n" + "=" * 80)
-    print("MONGO PIPELINE ORCHESTRATOR")
-    print("=" * 80)
+    print("\n" + "=" * 80, flush=True)
+    print("MONGO PIPELINE ORCHESTRATOR", flush=True)
+    print("=" * 80, flush=True)
 
     clientInstance = MongoClient(MONGO_URI)
     dbInstance = clientInstance[MONGO_DB_NAME]
@@ -101,40 +106,40 @@ def runMongoEngine():
     mongoDataJson = loadJsonData(MONGO_DATA_FILE)
 
     if not metadataJson:
-        print(f"[!] Metadata not found at {METADATA_FILE}. Run initialise first.")
+        print(f"[!] Metadata not found at {METADATA_FILE}. Run initialise first.", flush=True)
         clientInstance.close()
         return 0, 1
 
     if not mongoDataJson:
-        print(f"[!] Mongo data not found at {MONGO_DATA_FILE}. Run routing first.")
+        print(f"[!] Mongo data not found at {MONGO_DATA_FILE}. Run routing first.", flush=True)
         clientInstance.close()
         return 0, 1
 
     if len(mongoDataJson) == 0:
-        print("[*] mongo_data.json is empty — nothing to insert.")
+        print("[*] mongo_data.json is empty — nothing to insert.", flush=True)
         clientInstance.close()
         return 0, 0
 
-    print(f"[*] Loading {len(mongoDataJson)} records into MongoDB...")
+    print(f"[*] Loading {len(mongoDataJson)} records into MongoDB...", flush=True)
 
     strategyMap = determineMongoStrategy(metadataJson.get("fields", []))
     success_count, fail_count = processMongoData(mongoDataJson, strategyMap, dbInstance)
 
-    print("\n" + "=" * 80)
-    print("MONGO PIPELINE SUMMARY")
-    print("=" * 80)
-    print(f"\nDatabase    : {MONGO_DB_NAME}")
-    print(f"\nLoad Results:")
-    print(f"  Successful Upserts : {success_count}")
-    print(f"  Failed Upserts     : {fail_count}")
-    print(f"  Total Processed    : {success_count + fail_count}")
+    print("\n" + "=" * 80, flush=True)
+    print("MONGO PIPELINE SUMMARY", flush=True)
+    print("=" * 80, flush=True)
+    print(f"\nDatabase    : {MONGO_DB_NAME}", flush=True)
+    print(f"\nLoad Results:", flush=True)
+    print(f"  Successful Upserts : {success_count}", flush=True)
+    print(f"  Failed Upserts     : {fail_count}", flush=True)
+    print(f"  Total Processed    : {success_count + fail_count}", flush=True)
 
-    print(f"\nCollections in database:")
+    print(f"\nCollections in database:", flush=True)
     for col in dbInstance.list_collection_names():
         count = dbInstance[col].count_documents({})
-        print(f"  {col:<35} {count:>10} documents")
+        print(f"  {col:<35} {count:>10} documents", flush=True)
 
-    print("=" * 80)
+    print("=" * 80, flush=True)
 
     clientInstance.close()
     return success_count, fail_count

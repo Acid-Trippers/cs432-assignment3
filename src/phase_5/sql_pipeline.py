@@ -66,68 +66,68 @@ def run_sql_pipeline(engine: SQLEngine) -> Tuple[int, int]:
     Returns:
         (successful_inserts, failed_inserts)
     """
-    print("\n" + "=" * 80)
-    print("SQL PIPELINE ORCHESTRATOR")
-    print("=" * 80)
+    print("\n" + "=" * 80, flush=True)
+    print("SQL PIPELINE ORCHESTRATOR", flush=True)
+    print("=" * 80, flush=True)
 
     # Step 1: Initialize schema
-    print("\n[STEP 1] Initializing SQL Schema...")
+    print("\n[STEP 1] Initializing SQL Schema...", flush=True)
     if not engine.initialize():
-        print("[!] Failed to initialize SQL Engine")
+        print("[!] Failed to initialize SQL Engine", flush=True)
         return 0, 1
 
     stats = engine.get_database_stats()
-    print(f"[+] Database initialized with {len(stats)} tables")
+    print(f"[+] Database initialized with {len(stats)} tables", flush=True)
 
     # Step 2: Check for data file
-    print("\n[STEP 2] Loading SQL Data...")
+    print("\n[STEP 2] Loading SQL Data...", flush=True)
     if not os.path.exists(SQL_DATA_FILE):
-        print(f"[!] No SQL data file found at {SQL_DATA_FILE}")
-        print("[*] Run the ingestion and classification pipeline first.")
+        print(f"[!] No SQL data file found at {SQL_DATA_FILE}", flush=True)
+        print("[*] Run the ingestion and classification pipeline first.", flush=True)
         return 0, 0
 
     # Check if there's actually data to insert
     with open(SQL_DATA_FILE, 'r') as f:
         data = json.load(f)
     if not data:
-        print("[*] sql_data.json is empty — nothing to insert.")
+        print("[*] sql_data.json is empty — nothing to insert.", flush=True)
         return 0, 0
 
     file_size = os.path.getsize(SQL_DATA_FILE) / (1024 * 1024)
-    print(f"[*] Loading {file_size:.2f} MB ({len(data)} records)...")
+    print(f"[*] Loading {file_size:.2f} MB ({len(data)} records)...", flush=True)
 
     # Step 3: Bulk insert
-    print("\n[STEP 3] Bulk Inserting Records...")
+    print("\n[STEP 3] Bulk Inserting Records...", flush=True)
     success_count, fail_count = engine.bulk_insert_from_file(SQL_DATA_FILE)
 
     # Step 4: Archive only if fully successful
     if success_count > 0:
-        print("\n[STEP 4] Archiving Processed Data...")
+        print("\n[STEP 4] Archiving Processed Data...", flush=True)
         archive_file = os.path.join(DATA_DIR, "data_till_now_sql.json")
         archive_processed_data(SQL_DATA_FILE, archive_file, success_count, fail_count)
 
     # Step 5: Summary
-    print("\n" + "=" * 80)
-    print("SQL PIPELINE SUMMARY")
-    print("=" * 80)
+    print("\n" + "=" * 80, flush=True)
+    print("SQL PIPELINE SUMMARY", flush=True)
+    print("=" * 80, flush=True)
 
     final_stats = engine.get_database_stats()
     total_records = sum(final_stats.values())
 
     # FIX: use the engine's actual database URL, not the config constant
     # which may still point to SQLite even when using Postgres
-    print(f"\nDatabase: {engine.schema_builder.database_url}")
-    print(f"\nLoad Results:")
-    print(f"  Successful Inserts : {success_count}")
-    print(f"  Failed Inserts     : {fail_count}")
-    print(f"  Total Processed    : {success_count + fail_count}")
+    print(f"\nDatabase: {engine.schema_builder.database_url}", flush=True)
+    print(f"\nLoad Results:", flush=True)
+    print(f"  Successful Inserts : {success_count}", flush=True)
+    print(f"  Failed Inserts     : {fail_count}", flush=True)
+    print(f"  Total Processed    : {success_count + fail_count}", flush=True)
 
-    print(f"\nFinal Database State:")
+    print(f"\nFinal Database State:", flush=True)
     for table_name, count in sorted(final_stats.items()):
-        print(f"  {table_name:<30} {count:>10} records")
+        print(f"  {table_name:<30} {count:>10} records", flush=True)
 
-    print(f"\nTotal Records in Database: {total_records}")
-    print("=" * 80)
+    print(f"\nTotal Records in Database: {total_records}", flush=True)
+    print("=" * 80, flush=True)
 
     return success_count, fail_count
 

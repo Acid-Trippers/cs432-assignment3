@@ -20,7 +20,15 @@ Demo video: add your submission link here.
 pip install -r requirements.txt
 ```
 
-2. Start the dashboard server.
+2. Start backend services first (required before pipeline endpoints).
+
+```powershell
+docker-compose up -d
+```
+
+This starts PostgreSQL, MongoDB, and the external ingestion API. The pipeline endpoints (`/api/pipeline/schema`, `/api/pipeline/initialise`, `/api/pipeline/fetch`) depend on those services being reachable.
+
+3. Start the dashboard server.
 
 ```powershell
 .venv/bin/python dashboard/run.py
@@ -28,11 +36,13 @@ pip install -r requirements.txt
 
 If you are using an activated virtual environment, `python dashboard/run.py` works as well.
 
-3. Open the dashboard in your browser.
+4. Open the dashboard in your browser.
 
 ```text
 http://127.0.0.1:8080/
 ```
+
+If the external API is unreachable, the dashboard displays a warning banner. The same signal is available in `GET /api/stats` via `external_api_reachable`.
 
 ## ACID Test Endpoints
 

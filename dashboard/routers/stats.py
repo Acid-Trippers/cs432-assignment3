@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Request
+import httpx
 from sqlalchemy import inspect, text
 
-from src.config import MONGO_DB_NAME
+from src.config import API_HOST, MONGO_DB_NAME
 
 
 router = APIRouter()
@@ -50,8 +51,17 @@ async def get_stats(request: Request):
     except Exception as exc:
         mongo_payload["error"] = str(exc)
 
+    external_api_reachable = False
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            response = await client.get(f"{API_HOST}/")
+            external_api_reachable = response.status_code == 200
+    except Exception:
+        external_api_reachable = False
+
     return {
         "status": "ok",
         "sql": sql_payload,
         "mongo": mongo_payload,
+        "external_api_reachable": external_api_reachable,
     }

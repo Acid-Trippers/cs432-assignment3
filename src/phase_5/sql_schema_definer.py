@@ -170,12 +170,9 @@ class SQLSchemaBuilder:
             if field_name == 'record_id':
                 continue  # already added as PK above
             sql_type = self.analyzer._map_type_to_sql(meta.get('dominant_type', 'string'))
-            
-            #applying metadata-based contraints
-            is_not_null = meta.get('frequency') == 1.0
             is_unique = meta.get('cardinality') == 1.0
-            
-            attrs[field_name] = Column(sql_type, nullable=not is_not_null, unique = is_unique)
+
+            attrs[field_name] = Column(sql_type, nullable=True, unique=is_unique)
 
         self.models['main_records'] = type('MainRecords', (Base,), attrs)
 
@@ -192,11 +189,9 @@ class SQLSchemaBuilder:
             if meta.get('parent_path') == field_name and not meta.get('is_nested') and not meta.get('is_array') and meta.get('decision') == 'SQL':
                 col_name = sub_name.split('.')[-1]
                 sql_type = self.analyzer._map_type_to_sql(meta.get('dominant_type', 'string'))
-                
-                is_not_null = meta.get('frequency') == 1.0
                 is_unique = meta.get('cardinality') == 1.0
-                
-                attrs[col_name] = Column(sql_type, nullable=not is_not_null, unique = is_unique)
+
+                attrs[col_name] = Column(sql_type, nullable=True, unique=is_unique)
 
         self.models[table_name] = type(table_name.capitalize(), (Base,), attrs)
 
@@ -217,11 +212,9 @@ class SQLSchemaBuilder:
                 if meta.get('parent_path') == field_name and not meta.get('is_nested') and not meta.get('is_array') and meta.get('decision') == 'SQL':
                     col_name = sub_name.split('.')[-1]
                     sql_type = self.analyzer._map_type_to_sql(meta.get('dominant_type', 'string'))
-                    
-                    is_not_null = meta.get('frequency') == 1.0
                     is_unique = meta.get('cardinality') == 1.0
-                    
-                    attrs[col_name] = Column(sql_type, nullable=not is_not_null, unique = is_unique)
+
+                    attrs[col_name] = Column(sql_type, nullable=True, unique=is_unique)
         else:
             attrs['value'] = Column(String(255), nullable=False)
             attrs['value_type'] = Column(String(50), nullable=True)
@@ -231,6 +224,7 @@ class SQLSchemaBuilder:
     def _create_tables(self):
         """Creates all tables in the database."""
         Base.metadata.create_all(self.engine)
+        self._sync_existing_columns()
         print(f"[+] Database schema created at: {self.database_url}")
 
         inspector = inspect(self.engine)
@@ -244,6 +238,33 @@ class SQLSchemaBuilder:
             print(f"    PK      : {pk.get('constrained_columns', [])}")
             for fk in fks:
                 print(f"    FK      : {fk['constrained_columns']} → {fk['referred_table']}.{fk['referred_columns']}")
+
+    def _sync_existing_columns(self):
+        inspector = inspect(self.engine)
+
+        for table_name, model in self.models.items():
+            if not inspector.has_table(table_name):
+                continue
+
+            existing_columns = {column['name'] for column in inspector.get_columns(table_name)}
+            model_columns = {column.name: column for column in model.__table__.columns}
+
+            for column_name, column in model_columns.items():
+                if column_name in existing_columns:
+                    existing_info = next(
+                        info for info in inspector.get_columns(table_name) if info['name'] == column_name
+                    )
+                    if column.nullable and not existing_info.get('nullable', True):
+                        alter_stmt = f'ALTER TABLE "{table_name}" ALTER COLUMN "{column_name}" DROP NOT NULL'
+                        with self.engine.begin() as conn:
+                            conn.exec_driver_sql(alter_stmt)
+                    continue
+
+                column_type = column.type.compile(self.engine.dialect)
+                nullable_sql = "" if not column.nullable else " NULL"
+                alter_stmt = f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {column_type}{nullable_sql}'
+                with self.engine.begin() as conn:
+                    conn.exec_driver_sql(alter_stmt)
 
     def get_session(self):
         from sqlalchemy.orm import sessionmaker

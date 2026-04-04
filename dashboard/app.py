@@ -8,7 +8,7 @@ from fastapi.templating import Jinja2Templates
 from pymongo import MongoClient
 
 from dashboard.routers import acid, pipeline, query, stats
-from src.config import MONGO_URI, TRANSACTION_LOG_FILE
+from src.config import METADATA_FILE, MONGO_URI, TRANSACTION_LOG_FILE
 from src.phase_5.sql_engine import SQLEngine
 from src.phase_6.transaction_coordinator import TransactionCoordinator
 
@@ -19,7 +19,8 @@ BASE_DIR = Path(__file__).resolve().parent
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     sql_engine = SQLEngine()
-    sql_engine.initialize()
+    if METADATA_FILE and Path(METADATA_FILE).exists():
+        sql_engine.initialize()
 
     mongo_client = MongoClient(MONGO_URI)
 

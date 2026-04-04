@@ -2,6 +2,16 @@ import json
 from src.config import QUERY_FILE, METADATA_FILE, QUERY_OUTPUT_FILE
 from .CRUD_operations import create_operation, read_operation, update_operation, delete_operation
 
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
 def query_parser():
     """Parse the query.json and interpret what it means."""
     try:
@@ -176,6 +186,7 @@ def query_runner(query_dict=None):
 
     # Save result to query_output.json
     if result:
+        result = _json_safe(result)
         try:
             with open(QUERY_OUTPUT_FILE, 'w') as f:
                 json.dump(result, f, indent=2, default=str)

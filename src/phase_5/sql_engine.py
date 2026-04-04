@@ -175,6 +175,7 @@ class SQLEngine:
     def bulk_insert_from_file(self, json_file: str) -> Tuple[int, int]:
         if not os.path.exists(json_file):
             logger.error(f"File not found: {json_file}")
+            print(f"[!] File not found: {json_file}", flush=True)
             return 0, 0
 
         try:
@@ -183,12 +184,14 @@ class SQLEngine:
 
             if not isinstance(records, list):
                 logger.error("JSON file must contain a list of records")
+                print("[!] JSON file must contain a list of records", flush=True)
                 return 0, 1
 
             success_count = 0
             fail_count = 0
 
             logger.info(f"Starting bulk insert of {len(records)} records...")
+            print(f"[*] Starting bulk insert of {len(records)} records...", flush=True)
 
             for idx, record in enumerate(records):
                 record_id = self.insert_record(record)
@@ -199,12 +202,15 @@ class SQLEngine:
 
                 if (idx + 1) % 100 == 0:
                     logger.info(f"  Processed {idx + 1}/{len(records)} records...")
+                    print(f"[*] Processed {idx + 1}/{len(records)} records...", flush=True)
 
             logger.info(f"Bulk insert complete: {success_count} success, {fail_count} failed")
+            print(f"[+] Bulk insert complete: {success_count} success, {fail_count} failed", flush=True)
             return success_count, fail_count
 
         except Exception as e:
             logger.error(f"Bulk insert failed: {e}")
+            print(f"[!] Bulk insert failed: {e}", flush=True)
             return 0, 1
 
     def query_all(self, table_name: str = 'main_records', limit: int = 100) -> List[Dict]:

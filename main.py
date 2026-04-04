@@ -122,8 +122,14 @@ def run_storage_with_safety(batch_record_ids, context):
     Run SQL then Mongo storage for one logical batch and compensate on failure.
     Returns ((sql_success, sql_fail), (mongo_success, mongo_fail)).
     """
+    print("[*] Starting SQL Pipeline...", flush=True)
+    start_time = time.time()
+    
     engine_sql = sql_engine.SQLEngine()
     sql_success, sql_fail = sql_pipeline.run_sql_pipeline(engine_sql)
+    
+    sql_elapsed = time.time() - start_time
+    print(f"[+] SQL Pipeline completed in {sql_elapsed:.2f}s (success={sql_success}, fail={sql_fail})", flush=True)
 
     if sql_fail > 0:
         sql_comp = compensate_sql_batch(batch_record_ids)
@@ -142,7 +148,11 @@ def run_storage_with_safety(batch_record_ids, context):
             f"compensation_deleted={sql_comp.get('deleted')}"
         )
 
+    print("[*] Starting MongoDB Pipeline...", flush=True)
+    start_time = time.time()
     mongo_success, mongo_fail = mongo_engine.runMongoEngine()
+    mongo_elapsed = time.time() - start_time
+    print(f"[+] MongoDB Pipeline completed in {mongo_elapsed:.2f}s (success={mongo_success}, fail={mongo_fail})", flush=True)
 
     if mongo_fail > 0:
         mongo_comp = compensate_mongo_batch(batch_record_ids)
@@ -290,6 +300,11 @@ def clean_databases():
 
 
 def initialise(count=1000):
+    start_time = time.time()
+    print("\n" + "="*80, flush=True)
+    print("PIPELINE INITIALISE", flush=True)
+    print("="*80, flush=True)
+    
     files_to_clean = [
         COUNTER_FILE, RECEIVED_DATA_FILE, CLEANED_DATA_FILE, 
         BUFFER_FILE, ANALYZED_SCHEMA_FILE, METADATA_FILE, 
@@ -304,44 +319,73 @@ def initialise(count=1000):
                 shutil.rmtree(f)
     with open(COUNTER_FILE, 'w') as f:
         f.write("0")
-    print("\n[!] Environment reset.")
+    print("\n[!] Environment reset.", flush=True)
 
-    #THIS CLEARS BOTH DATABASES
+    # THIS CLEARS BOTH DATABASES
+    print("[STAGE] Clearing Databases...", flush=True)
+    stage_start = time.time()
     clean_databases()
+    print(f"[+] Databases cleared in {time.time() - stage_start:.2f}s", flush=True)
 
-    print("[*] Running Schema Definition...")
-    schema_definition.main()
+    print("\n[STAGE] Schema validation...", flush=True)
+    stage_start = time.time()
+    if not os.path.exists(INITIAL_SCHEMA_FILE):
+        raise RuntimeError(
+            f"{INITIAL_SCHEMA_FILE} not found. Save a schema first via /api/pipeline/schema."
+        )
+
+    with open(INITIAL_SCHEMA_FILE, "r", encoding="utf-8") as schema_file:
+        initial_schema = json.load(schema_file)
+
+    schema_definition.validate_structure(initial_schema)
+    print(f"[+] {INITIAL_SCHEMA_FILE} validated in {time.time() - stage_start:.2f}s", flush=True)
     
-    print("[*] Fetching Data...")
+    print("\n[STAGE] Fetching data ({} records)...".format(count), flush=True)
+    stage_start = time.time()
     raw_records = asyncio.run(ingestion.fetch_data(count))
     save_checkpoint(RECEIVED_DATA_FILE, raw_records, append=False)
     set_checkpoint("ingest")
+    print(f"[+] Data fetched in {time.time() - stage_start:.2f}s", flush=True)
 
-    print("[*] Processed In-Memory. (Cleaning + Profiling)")
+    print("\n[STAGE] Cleaning and profiling data...", flush=True)
+    stage_start = time.time()
     cleaned_records = process_in_memory(raw_records, is_fetch=False)
     batch_record_ids = [r.get("record_id") for r in cleaned_records if r.get("record_id") is not None]
     set_checkpoint("profile")
+    print(f"[+] Data cleaned and profiled in {time.time() - stage_start:.2f}s", flush=True)
 
-    print("[*] Building Metadata...")
+    print("\n[STAGE] Building metadata...", flush=True)
+    stage_start = time.time()
     metadata_builder.merge_metadata()
     set_checkpoint("metadata")
+    print(f"[+] Metadata built in {time.time() - stage_start:.2f}s", flush=True)
 
-    print("[*] Classifying Schema...")
+    print("\n[STAGE] Classifying schema...", flush=True)
+    stage_start = time.time()
     classifier.run_classification(verbose=True)
     set_checkpoint("classify")
+    print(f"[+] Schema classified in {time.time() - stage_start:.2f}s", flush=True)
     
-    print("[*] Routing Data...")
+    print("\n[STAGE] Routing data to storage engines...", flush=True)
+    stage_start = time.time()
     data_router.route_data()
     set_checkpoint("route")
+    print(f"[+] Data routed in {time.time() - stage_start:.2f}s", flush=True)
     
-    print("[*] SQL Pipeline...")
-    print("[*] MongoDB Pipeline...")
+    print("\n[STAGE] Running storage pipeline (SQL + MongoDB)...", flush=True)
+    stage_start = time.time()
     run_storage_with_safety(
         batch_record_ids,
         {"pipeline": "initialise", "requested_count": count},
     )
     set_checkpoint("sql")
     set_checkpoint("mongo")
+    print(f"[+] Storage pipeline completed in {time.time() - stage_start:.2f}s", flush=True)
+    
+    total_elapsed = time.time() - start_time
+    print("\n" + "="*80, flush=True)
+    print(f"[SUCCESS] Pipeline initialise completed in {total_elapsed:.2f}s", flush=True)
+    print("="*80, flush=True)
 
 
 def fetch(count=100):
