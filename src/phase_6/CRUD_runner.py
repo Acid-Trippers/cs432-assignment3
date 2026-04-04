@@ -141,41 +141,57 @@ def analyze_query_databases(parsed_query):
         "databases_needed": list(databases_needed)
     }
     
-def query_runner():
-    parsed_query = query_parser()
-    
-    if parsed_query:
-        db_analysis = analyze_query_databases(parsed_query)
-        print(f"\nAnalysis Result: {db_analysis}")
-        
-        operation = parsed_query.get("operation")
-        result = None
-        
-        if operation == "CREATE":
-            result = create_operation(parsed_query, db_analysis)
-        elif operation == "READ":
-            result = read_operation(parsed_query, db_analysis)
-        elif operation == "UPDATE":
-            result = update_operation(parsed_query, db_analysis)
-        elif operation == "DELETE":
-            result = delete_operation(parsed_query, db_analysis)
-        
-        # Save result to query_output.json
-        if result:
-            try:
-                with open(QUERY_OUTPUT_FILE, 'w') as f:
-                    json.dump(result, f, indent=2, default=str)
-                print(f"[SAVED] Query output saved to {QUERY_OUTPUT_FILE}")
-            except Exception as e:
-                print(f"[ERROR] Failed to save query output: {e}")
-        
-        # Print the result in formatted JSON
-        if result:
-            print(f"\n{'='*60}")
-            print("[FINAL RESULT]")
-            print(f"{'='*60}")
-            print(json.dumps(result, indent=2, default=str))
-            print(f"{'='*60}\n")
+def query_runner(query_dict=None):
+    """
+    Execute a CRUD query.
+
+    If query_dict is provided, run directly on that payload.
+    Otherwise, preserve legacy CLI flow by reading QUERY_FILE via query_parser().
+    """
+    parsed_query = query_dict if query_dict is not None else query_parser()
+
+    if not parsed_query:
+        return None
+
+    db_analysis = analyze_query_databases(parsed_query)
+    print(f"\nAnalysis Result: {db_analysis}")
+
+    operation = parsed_query.get("operation")
+    result = None
+
+    if operation == "CREATE":
+        result = create_operation(parsed_query, db_analysis)
+    elif operation == "READ":
+        result = read_operation(parsed_query, db_analysis)
+    elif operation == "UPDATE":
+        result = update_operation(parsed_query, db_analysis)
+    elif operation == "DELETE":
+        result = delete_operation(parsed_query, db_analysis)
+    else:
+        result = {
+            "operation": operation,
+            "status": "failed",
+            "error": f"Unsupported operation: {operation}"
+        }
+
+    # Save result to query_output.json
+    if result:
+        try:
+            with open(QUERY_OUTPUT_FILE, 'w') as f:
+                json.dump(result, f, indent=2, default=str)
+            print(f"[SAVED] Query output saved to {QUERY_OUTPUT_FILE}")
+        except Exception as e:
+            print(f"[ERROR] Failed to save query output: {e}")
+
+    # Print the result in formatted JSON
+    if result:
+        print(f"\n{'='*60}")
+        print("[FINAL RESULT]")
+        print(f"{'='*60}")
+        print(json.dumps(result, indent=2, default=str))
+        print(f"{'='*60}\n")
+
+    return result
 
 if __name__ == "__main__":
     query_runner()
