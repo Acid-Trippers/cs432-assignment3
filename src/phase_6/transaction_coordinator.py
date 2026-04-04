@@ -36,7 +36,10 @@ class TransactionCoordinator:
     def _ensure_log_file(self):
         log_dir = os.path.dirname(self.log_file)
         if log_dir:
-            os.makedirs(log_dir, exist_ok=True)
+            try:
+                os.makedirs(log_dir, exist_ok=True)
+            except Exception:
+                pass
         if not os.path.exists(self.log_file):
             self._atomic_write_json(self.log_file, [])
 

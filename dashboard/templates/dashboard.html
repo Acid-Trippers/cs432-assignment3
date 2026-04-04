@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Initialized Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=2">
+</head>
+<body>
+    <main id="dashboard-root" class="dashboard-shell">
+        <header class="dashboard-header status-card">
+            <div>
+                <p class="eyebrow">Initialized Session</p>
+                <h1>Pipeline Dashboard</h1>
+                <p class="subtitle">Run fetches, monitor records, execute logical queries, and validate ACID behavior.</p>
+            </div>
+
+            <div class="header-actions">
+                <div class="state-row compact">
+                    <span>Project Status</span>
+                    <strong id="dashboard-state" class="state-pill">Initialized</strong>
+                </div>
+                <div class="db-status-mini">
+                    <span class="meta-text" title="Relational Backend"><span id="sql-status-dot" class="status-dot offline" aria-hidden="true"></span> SQL</span>
+                    <span class="meta-text" title="Document Backend"><span id="mongo-status-dot" class="status-dot offline" aria-hidden="true"></span> NoSQL</span>
+                </div>
+                <div class="header-button-row">
+                    <button id="btn-fetch-more-toggle" class="btn btn-primary" type="button">Fetch More</button>
+                    <button id="btn-reset-dashboard" class="btn btn-danger" type="button">Reset</button>
+                    <a class="btn" href="/">Back to Landing</a>
+                </div>
+            </div>
+        </header>
+
+        <section id="fetch-form-inline" class="status-card inline-fetch-form hidden">
+            <p class="eyebrow">Fetch Incremental Records</p>
+            <div class="inline-form-row">
+                <label class="field-label" for="fetch-count">Record count</label>
+                <input id="fetch-count" type="number" min="1" value="100">
+                <button id="btn-run-fetch" class="btn btn-primary" type="button">Run Fetch</button>
+            </div>
+        </section>
+
+        <p id="dashboard-feedback" class="feedback hidden" role="status"></p>
+
+        <section class="dashboard-section status-card" aria-labelledby="stats-title">
+            <div class="section-heading">
+                <h2 id="stats-title">Stats Panel</h2>
+                <span id="stats-refreshed-at" class="meta-text">Awaiting refresh...</span>
+            </div>
+            <div class="stats-grid">
+                <article class="dashboard-card" style="grid-column: 1 / -1; display: flex; flex-direction: column; gap: 0.8rem;">
+                    <h3>Logical Entity Store</h3>
+                    <p class="status-inline">
+                        <span id="system-status-text">Checking logical schema state...</span>
+                    </p>
+                    <p class="metric-line">Total synchronized records: <strong id="system-main-total">-</strong></p>
+                    <ul id="system-table-list" class="count-list"></ul>
+                </article>
+            </div>
+        </section>
+
+        <section class="dashboard-section status-card" aria-labelledby="query-title">
+            <div class="section-heading">
+                <h2 id="query-title">Query Interface</h2>
+            </div>
+
+            <div class="query-controls">
+                <label class="field-label" for="query-operation">Operation</label>
+                <select id="query-operation">
+                    <option value="READ">READ</option>
+                    <option value="CREATE">CREATE</option>
+                    <option value="UPDATE">UPDATE</option>
+                    <option value="DELETE">DELETE</option>
+                </select>
+                <button id="btn-run-query" class="btn btn-primary" type="button">Run Query</button>
+            </div>
+
+            <label class="field-label" for="query-json">Query JSON</label>
+            <textarea id="query-json" class="query-input" spellcheck="false"></textarea>
+            <p id="query-feedback" class="feedback hidden" role="status"></p>
+
+            <div class="results-panel">
+                <div class="section-heading compact">
+                    <h3>Results</h3>
+                    <button id="btn-download-json" class="btn" type="button" disabled>Download JSON</button>
+                </div>
+                <p id="query-empty" class="meta-text">Run a query to view results.</p>
+                <div id="query-results" class="hidden"></div>
+            </div>
+        </section>
+
+        <section class="dashboard-section status-card" aria-labelledby="acid-title">
+            <div class="section-heading">
+                <h2 id="acid-title">ACID Tests</h2>
+                <button id="btn-run-all-acid" class="btn btn-primary" type="button">Run All</button>
+            </div>
+
+            <p id="acid-feedback" class="feedback hidden" role="status"></p>
+
+            <div class="acid-grid">
+                <article class="acid-card" data-test="atomicity">
+                    <div class="acid-head">
+                        <h3>Atomicity</h3>
+                        <span id="badge-atomicity" class="result-badge neutral">Not Run</span>
+                    </div>
+                    <p class="acid-description">Verifies all-or-nothing write behavior under transactional failures.</p>
+                    <button class="btn run-acid-btn" data-test="atomicity" type="button">Run Test</button>
+                    <details id="details-atomicity" class="acid-details hidden">
+                        <summary>View Result JSON</summary>
+                        <pre id="json-atomicity"></pre>
+                    </details>
+                </article>
+
+                <article class="acid-card" data-test="consistency">
+                    <div class="acid-head">
+                        <h3>Consistency</h3>
+                        <span id="badge-consistency" class="result-badge neutral">Not Run</span>
+                    </div>
+                    <p class="acid-description">Checks constraints and valid-state transitions after updates.</p>
+                    <button class="btn run-acid-btn" data-test="consistency" type="button">Run Test</button>
+                    <details id="details-consistency" class="acid-details hidden">
+                        <summary>View Result JSON</summary>
+                        <pre id="json-consistency"></pre>
+                    </details>
+                </article>
+
+                <article class="acid-card" data-test="isolation">
+                    <div class="acid-head">
+                        <h3>Isolation</h3>
+                        <span id="badge-isolation" class="result-badge neutral">Not Run</span>
+                    </div>
+                    <p class="acid-description">Confirms concurrent operations do not leak intermediate state.</p>
+                    <button class="btn run-acid-btn" data-test="isolation" type="button">Run Test</button>
+                    <details id="details-isolation" class="acid-details hidden">
+                        <summary>View Result JSON</summary>
+                        <pre id="json-isolation"></pre>
+                    </details>
+                </article>
+
+                <article class="acid-card" data-test="durability">
+                    <div class="acid-head">
+                        <h3>Durability</h3>
+                        <span id="badge-durability" class="result-badge neutral">Not Run</span>
+                    </div>
+                    <p class="acid-description">Ensures committed writes survive connection and process boundaries.</p>
+                    <button class="btn run-acid-btn" data-test="durability" type="button">Run Test</button>
+                    <details id="details-durability" class="acid-details hidden">
+                        <summary>View Result JSON</summary>
+                        <pre id="json-durability"></pre>
+                    </details>
+                </article>
+            </div>
+        </section>
+    </main>
+    <script src="/static/main.js?v=2"></script>
+</body>
+</html>

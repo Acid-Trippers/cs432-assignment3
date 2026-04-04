@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+import json
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -8,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 from pymongo import MongoClient
 
 from dashboard.routers import acid, pipeline, query, stats
-from src.config import METADATA_FILE, MONGO_URI, TRANSACTION_LOG_FILE
+from src.config import INITIAL_SCHEMA_FILE, METADATA_FILE, MONGO_URI, TRANSACTION_LOG_FILE
 from src.phase_5.sql_engine import SQLEngine
 from src.phase_6.transaction_coordinator import TransactionCoordinator
 
@@ -19,10 +21,24 @@ BASE_DIR = Path(__file__).resolve().parent
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     sql_engine = SQLEngine()
-    if METADATA_FILE and Path(METADATA_FILE).exists():
-        sql_engine.initialize()
+    app.state.sql_initialized = False
+    app.state.pipeline_state = "fresh"
 
-    mongo_client = MongoClient(MONGO_URI)
+    if os.path.exists(METADATA_FILE):
+        try:
+            initialized = sql_engine.initialize()
+        except Exception:
+            initialized = False
+
+        if initialized:
+            app.state.sql_initialized = True
+            app.state.pipeline_state = "initialized"
+        elif os.path.exists(INITIAL_SCHEMA_FILE):
+            app.state.pipeline_state = "schema_ready"
+    elif os.path.exists(INITIAL_SCHEMA_FILE):
+        app.state.pipeline_state = "schema_ready"
+
+    mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=2000)
 
     coordinator = TransactionCoordinator(log_file=TRANSACTION_LOG_FILE)
 
@@ -61,3 +77,39 @@ app.include_router(acid.router)
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
+
+@app.get("/setup", response_class=HTMLResponse)
+async def setup(request: Request):
+    schema_payload = {
+        "entities": {
+            "example_entity": {
+                "fields": {
+                    "id": {"type": "string", "required": True},
+                    "name": {"type": "string", "required": True},
+                }
+            }
+        }
+    }
+
+    if os.path.exists(INITIAL_SCHEMA_FILE):
+        try:
+            with open(INITIAL_SCHEMA_FILE, "r", encoding="utf-8") as schema_file:
+                loaded_schema = json.load(schema_file)
+                if isinstance(loaded_schema, dict):
+                    schema_payload = loaded_schema
+        except Exception:
+            pass
+
+    return templates.TemplateResponse(
+        "setup.html",
+        {
+            "request": request,
+            "schema_json": json.dumps(schema_payload, indent=2),
+        },
+    )
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_home(request: Request):
+    return templates.TemplateResponse("dashboard.html", {"request": request})

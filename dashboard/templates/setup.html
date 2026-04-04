@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Schema Setup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <main class="page-shell">
+        <section class="status-card setup-card">
+            <p class="eyebrow">Schema</p>
+            <h1>Set Up Pipeline Schema</h1>
+            <p class="subtitle">Paste or edit JSON schema, save it, then initialize the pipeline.</p>
+
+            <label class="field-label" for="schema-input">Schema JSON</label>
+            <textarea id="schema-input" class="schema-input" spellcheck="false">{{ schema_json }}</textarea>
+
+            <div class="count-row">
+                <label for="setup-init-count">Initialise record count</label>
+                <input id="setup-init-count" type="number" min="1" value="1000">
+            </div>
+
+            <div class="action-grid">
+                <button id="btn-save-schema" class="btn btn-primary" type="button">Save Schema</button>
+                <button id="btn-setup-initialise" class="btn btn-primary hidden" type="button">Run Initialise</button>
+                <button id="btn-back-home" class="btn" type="button">Back to Landing</button>
+            </div>
+
+            <p id="setup-message" class="feedback hidden" role="status"></p>
+        </section>
+    </main>
+    <script src="/static/main.js"></script>
+</body>
+</html>

@@ -34,5 +34,7 @@ API_HOST = os.environ.get("API_HOST", "http://127.0.0.1:8000")
 # Other data files
 COUNTER_FILE = os.path.join(DATA_DIR, "counter.txt")
 
-# Ensure data directory exists
-os.makedirs(DATA_DIR, exist_ok=True)
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)
+except Exception:
+    pass

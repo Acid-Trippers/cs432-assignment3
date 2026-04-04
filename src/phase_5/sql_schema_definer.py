@@ -143,7 +143,7 @@ class SQLSchemaBuilder:
         self._create_models()
 
         print("[*] Creating database engine...")
-        self.engine = create_engine(self.database_url, echo=False)
+        self.engine = create_engine(self.database_url, echo=False, connect_args={"connect_timeout": 2})
 
         print("[*] Creating database tables...")
         self._create_tables()

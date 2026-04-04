@@ -99,7 +99,7 @@ def runMongoEngine():
     print("MONGO PIPELINE ORCHESTRATOR", flush=True)
     print("=" * 80, flush=True)
 
-    clientInstance = MongoClient(MONGO_URI)
+    clientInstance = MongoClient(MONGO_URI, serverSelectionTimeoutMS=2000)
     dbInstance = clientInstance[MONGO_DB_NAME]
 
     metadataJson = loadJsonData(METADATA_FILE)

@@ -104,7 +104,10 @@ class DataAnalyzer:
     def save_analysis(self, output_file: str = ANALYZED_SCHEMA_FILE):
         # Create /data folder if doesn't already exist
         if not os.path.exists(DATA_DIR):
-            os.makedirs(DATA_DIR)
+            try:
+                os.makedirs(DATA_DIR)
+            except Exception:
+                pass
 
         fields_summary = []
         for f in sorted(self.field_counts.keys()):
