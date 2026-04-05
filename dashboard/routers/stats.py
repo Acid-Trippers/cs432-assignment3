@@ -154,12 +154,19 @@ def _compute_transaction_stats():
     }
 
 def _load_last_fetch():
-    ckpt = _read_json(_PIPELINE_CHECKPOINT_FILE, None)
-    if ckpt is None or not isinstance(ckpt, dict):
+    # Read as dict default so valid checkpoint objects are not discarded.
+    ckpt = _read_json(_PIPELINE_CHECKPOINT_FILE, {})
+    if not isinstance(ckpt, dict) or not ckpt:
         ckpt = _read_json(CHECKPOINT_FILE, {})
-    
+
+    timestamp = (
+        ckpt.get("timestamp")
+        or ckpt.get("time")
+        or ckpt.get("last_fetch_timestamp")
+    )
+
     return {
-        "timestamp": _to_iso_timestamp(ckpt.get("timestamp")),
+        "timestamp": _to_iso_timestamp(timestamp),
         "count": _safe_int(ckpt.get("count", 0))
     }
 
