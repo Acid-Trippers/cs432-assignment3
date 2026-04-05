@@ -344,10 +344,18 @@ def concurrent_read_write_isolation_test(readers: int = 3, writers: int = 2):
         base_id = int(time.time() * 1000) % 1000000
         record_ids = [base_id + i for i in range(writers)]
         
-        # Synchronization using barrier + events
+        # Synchronization primitives enforce strict phases:
+        # 1) Writers stage uncommitted inserts
+        # 2) All readers take pre-commit snapshot
+        # 3) Writers commit
+        # 4) All readers take post-commit snapshot
         writers_ready = threading.Barrier(writers)
+        readers_pre_barrier = threading.Barrier(readers)
         readers_can_read = threading.Event()
-        writers_can_commit = threading.Event()
+        pre_reads_done = threading.Event()
+        all_writers_committed = threading.Event()
+        writers_committed = 0
+        writers_lock = threading.Lock()
         
         pre_commit_reads = []
         post_commit_reads = []
@@ -363,22 +371,34 @@ def concurrent_read_write_isolation_test(readers: int = 3, writers: int = 2):
                 )
                 writers_ready.wait(timeout=2)
                 readers_can_read.set()
-                writers_can_commit.wait(timeout=3)
+                pre_reads_done.wait(timeout=5)
                 session.commit()
             except Exception:
                 session.rollback()
             finally:
+                nonlocal writers_committed
+                with writers_lock:
+                    writers_committed += 1
+                    if writers_committed == writers:
+                        all_writers_committed.set()
                 session.close()
 
         def reader_thread():
             """Read count before and after commit."""
-            readers_can_read.wait(timeout=3)
-            time.sleep(0.05)
+            readers_can_read.wait(timeout=5)
             pre_count = _sql_count()
             with read_lock:
                 pre_commit_reads.append(pre_count)
-            writers_can_commit.set()
-            time.sleep(0.1)
+
+            # Ensure all readers captured pre-commit view before writers commit.
+            try:
+                barrier_index = readers_pre_barrier.wait(timeout=5)
+                if barrier_index == 0:
+                    pre_reads_done.set()
+            except threading.BrokenBarrierError:
+                pre_reads_done.set()
+
+            all_writers_committed.wait(timeout=5)
             post_count = _sql_count()
             with read_lock:
                 post_commit_reads.append(post_count)
@@ -393,7 +413,7 @@ def concurrent_read_write_isolation_test(readers: int = 3, writers: int = 2):
             t.start()
         
         for t in writer_threads + reader_threads:
-            t.join(timeout=5)
+            t.join(timeout=8)
         
         after_count = _sql_count()
         expected = base_count + writers
