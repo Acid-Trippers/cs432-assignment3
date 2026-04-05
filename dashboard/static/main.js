@@ -712,8 +712,8 @@ function formatRelativeTime(isoRaw) {
 
 function getSystemStatusPresentation(status) {
   if (status.pipeline_state !== "initialized") return { message: "System initializing", variant: "warning" };
-  if (status.pipeline_busy) return { message: "Pipeline busy", variant: "warning" };
-  return { message: "Online and ready", variant: "neutral" };
+  if (status.pipeline_busy) return { message: "Pipeline busy", variant: "busy" };
+  return { message: "Online and ready", variant: "online" };
 }
 
 function normalizeFieldDetailsRows(rows) {
@@ -764,21 +764,6 @@ function renderFieldDetailsTable() {
   `).join("");
 }
 
-function renderSchemaDimensions(stats) {
-  const defined = stats?.active_fields?.defined || 0;
-  const discovered = stats?.active_fields?.discovered || 0;
-  const pending = stats?.active_fields?.pending || 0;
-  const elDefined = document.getElementById("schema-defined-count");
-  if (elDefined) elDefined.textContent = `${formatInteger(defined)} defined`;
-  const elDiscovered = document.getElementById("schema-discovered-count");
-  if (elDiscovered) elDiscovered.textContent = `${formatInteger(discovered)} discovered`;
-  const elPending = document.getElementById("schema-pending-count");
-  if (elPending) elPending.textContent = `${formatInteger(pending)} pending`;
-  fieldDetailsRows = normalizeFieldDetailsRows(stats?.active_fields?.details);
-  updateFieldSortButtonState();
-  renderFieldDetailsTable();
-}
-
 function setKpiCardContent(id, value, subtitle, statusValue = null) {
   const card = document.getElementById(id);
   if (!card) return;
@@ -795,11 +780,6 @@ function setKpiCardContent(id, value, subtitle, statusValue = null) {
 }
 
 function renderDashboardStatsBundle(status, stats, pipelineStats) {
-  const sys = getSystemStatusPresentation(status);
-  
-  const elDot = document.getElementById("kpi-system-dot");
-  if (elDot) elDot.innerHTML = `<span class="status-dot ${sys.variant}"></span><span class="kpi-label">System State</span><span class="kpi-value">${sys.message}</span>`;
-  
   // Update SQL and NoSQL connection indicators
   const sqlDot = document.getElementById("sql-status-dot");
   if (sqlDot) {
@@ -815,20 +795,14 @@ function renderDashboardStatsBundle(status, stats, pipelineStats) {
   setKpiCardContent("kpi-active-fields", formatInteger(pipelineStats?.active_fields?.total), "Fields actively tracked");
   setKpiCardContent("kpi-data-density", formatPercent(pipelineStats?.data_density), "Average field density");
   
-  setKpiCardContent("kpi-system-status", sys.message, status.pipeline_busy ? "Busy" : "Ready");
-  
   const fetchedCount = formatInteger(pipelineStats?.last_fetch?.count);
   const fetchedWhen = formatRelativeTime(pipelineStats?.last_fetch?.timestamp);
   setKpiCardContent("kpi-last-fetch", fetchedWhen, `Fetched ${fetchedCount} records`);
   
   const txTotal = formatInteger(pipelineStats?.transactions?.total);
-  const txRate = formatPercent(pipelineStats?.transactions?.success_rate);
   setKpiCardContent("kpi-transactions", txTotal, "Total operations");
-  setKpiCardContent("kpi-transactions-breakdown", txRate, "Success rate");
   
   setKpiCardContent("kpi-active-fields-breakdown", formatInteger(pipelineStats?.active_fields?.defined), "Defined fields");
-  
-  renderSchemaDimensions(pipelineStats);
 }
 
 async function refreshDashboardStats() {

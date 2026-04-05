@@ -188,6 +188,28 @@ class DataCleaner:
         
         return cleaned_node
 
+
+def _is_empty_cleaned_record(record):
+    """
+    Check if a cleaned record has no meaningful data (only system fields).
+    
+    Args:
+        record: Cleaned record dictionary
+    
+    Returns:
+        True if record has no meaningful data fields besides record_id
+    """
+    system_fields = {'record_id', 'sys_ingested_time'}
+    
+    for key, value in record.items():
+        if key not in system_fields:
+            # If any non-system field has data, record is not empty
+            if value is not None and str(value).strip() and value != {}:
+                return False
+    
+    return True
+
+
 def run_cleaning_pipeline():
     if not os.path.exists(RECEIVED_DATA_FILE):
         print(f"[!] Input file not found: {RECEIVED_DATA_FILE}")
@@ -205,6 +227,13 @@ def run_cleaning_pipeline():
                 # Use sys_ingested_time or index as temporary ID for the buffer
                 parent_id = raw_record.get("id", raw_record.get("_id", f"idx_{i}"))
                 cleaned_record = cleaner.clean_recursive(raw_record, cleaner.schema, parent_id)
+                
+                # Additional validation: skip records that are empty after cleaning
+                # (only have record_id and no other meaningful data)
+                if _is_empty_cleaned_record(cleaned_record):
+                    print(f"[!] Skipping empty record (ID: {parent_id})")
+                    continue
+                
                 all_cleaned_records.append(cleaned_record)
             except Exception as e:
                 print(f"[!] Error cleaning record {i}: {e}")

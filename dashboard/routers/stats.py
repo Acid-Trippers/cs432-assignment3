@@ -140,7 +140,11 @@ def _compute_transaction_stats():
         elif st == "failed_needs_recovery":
             failed += 1
         
-    sr = round((committed / total * 100), 1) if total > 0 else 0.0
+    # Success = committed + rolled_back (both indicate proper operation)
+    # Failed = only transactions in "failed_needs_recovery" state
+    successful = committed + rolled_back
+    sr = round((successful / total * 100), 1) if total > 0 else 0.0
+    
     return {
         "total": total,
         "committed": committed,

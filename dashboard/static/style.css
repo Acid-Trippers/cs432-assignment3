@@ -360,6 +360,10 @@ select:focus {
   background: #d97706;
 }
 
+.status-dot.warning {
+  background: #f59e0b;
+}
+
 .metric-line {
   margin: 0;
   font-size: 0.95rem;

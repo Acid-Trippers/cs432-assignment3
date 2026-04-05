@@ -21,6 +21,28 @@ INGESTION_TIMEOUT = 30 # seconds
 Data_file = RECEIVED_DATA_FILE
 Counter_file = COUNTER_FILE
 
+
+def is_empty_record(record):
+    """
+    Check if a record is empty (only has record_id and system fields).
+    
+    Args:
+        record: Dictionary to check
+    
+    Returns:
+        True if record has no meaningful data fields
+    """
+    system_fields = {'record_id', 'sys_ingested_time'}
+    
+    for key, value in record.items():
+        if key not in system_fields:
+            # If any non-system field has data, record is not empty
+            if value is not None and str(value).strip():
+                return False
+    
+    return True
+
+
 def get_counter():
     if not os.path.exists(Counter_file):
         with open(Counter_file, 'w') as f:
@@ -48,6 +70,11 @@ async def fetch_data(num):
                         try:
                             record = json.loads(record_json)
 
+                            # Skip empty records (only record_id with no data)
+                            if is_empty_record(record):
+                                print(f"[!] Warning: Skipping empty record (ID: {record.get('record_id', 'unknown')})")
+                                continue
+
                             # Record ingestion time
                             record['sys_ingested_time'] = datetime.datetime.now().isoformat()
                             new_records.append(record)
@@ -58,8 +85,9 @@ async def fetch_data(num):
                             print(f"[!] Warning: Failed to parse record: {record_json}")
 
                 update_total = curr_total + fetched_now
-                increment_counter(update_total)
-                print(f"[*] Ingestion completed: {fetched_now} records fetched. Total now {update_total}.")
+                # NOTE: Counter is NOT incremented here - main.py handles all counter updates
+                # Ingestion's job is only to filter and return valid records
+                print(f"[*] Ingestion completed: {fetched_now} records fetched. Will be stored with base ID {curr_total}.")
                 return new_records
     except httpx.ConnectError:
         print(f"[!] Error: Connection failed. Is the API running at {API_HOST}?")

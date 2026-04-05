@@ -236,13 +236,15 @@ def process_in_memory(raw_records, is_fetch=False):
     """Handles the sequential processing of data records in memory."""
     print("[*] Cleaning Data...")
     
-    # helper to get offset
+    # Get the current offset (starting record_id for this batch)
+    # The counter represents the NEXT ID to use
     offset = 0
     if os.path.exists(COUNTER_FILE):
         try:
             with open(COUNTER_FILE, 'r') as f:
-                offset = int(f.read().strip() or 0) - len(raw_records)
-        except: pass
+                offset = int(f.read().strip() or 0)
+        except: 
+            offset = 0
 
     cleaner = cleaner_mod.DataCleaner()
     cleaned_records = []
