@@ -40,7 +40,39 @@
 
             <p id="landing-message" class="feedback hidden" role="status"></p>
         </section>
+
+        <!-- Custom Reset Dialog -->
+        <dialog id="reset-dialog" class="custom-modal">
+            <div class="modal-content">
+                <h2>Reset Environment?</h2>
+                <p>This will drop all database tables and clear runtime records. This action cannot be undone.</p>
+                
+                <div class="modal-options">
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="wipe-schema-check">
+                        <span class="checkmark"></span>
+                        Also delete the initial schema definition
+                    </label>
+                </div>
+
+                <div class="modal-actions">
+                    <button id="btn-reset-cancel" class="btn btn-secondary">Cancel</button>
+                    <button id="btn-reset-confirm" class="btn btn-danger">Reset Everything</button>
+                </div>
+            </div>
+        </dialog>
     </main>
+    <!-- Progress Bar Overlay -->
+    <div id="progress-wrap" class="progress-overlay hidden" role="status" aria-live="polite">
+        <div class="progress-modal">
+            <p id="progress-label" class="progress-label">Running...</p>
+            <div class="progress-track" aria-hidden="true">
+                <div id="progress-bar-fill" class="progress-bar-fill"></div>
+            </div>
+            <p class="progress-meta">Elapsed: <span id="progress-elapsed">0s</span></p>
+        </div>
+    </div>
+
     <script src="/static/main.js"></script>
 </body>
 </html>

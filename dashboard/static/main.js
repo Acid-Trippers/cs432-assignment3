@@ -6,6 +6,62 @@ let currentColumnSortMode = "frequency";
 let currentRowSortColumn = "";
 const PAGE_SIZE = 100;
 
+let _progressTimer = null;
+let _progressStart = null;
+// Simulated fill: creeps toward 90% while running, jumps to 100% on hideProgress
+let _progressFill = 0;
+
+function showProgress(label = "Running...") {
+  const wrap = document.getElementById("progress-wrap");
+  const labelEl = document.getElementById("progress-label");
+  const elapsed = document.getElementById("progress-elapsed");
+  const bar = document.getElementById("progress-bar-fill");
+  if (!wrap) return;
+  if (labelEl) labelEl.textContent = label;
+  if (elapsed) elapsed.textContent = "0s";
+  _progressFill = 0;
+  if (bar) {
+    bar.style.transition = "none";
+    bar.style.width = "0%";
+  }
+  wrap.classList.remove("hidden");
+  _progressStart = Date.now();
+  if (_progressTimer) clearInterval(_progressTimer);
+  _progressTimer = setInterval(() => {
+    const secs = Math.floor((Date.now() - _progressStart) / 1000);
+    if (elapsed) elapsed.textContent = `${secs}s`;
+    // Ease fill toward 90%: slows down asymptotically
+    if (bar) {
+      _progressFill = _progressFill + (90 - _progressFill) * 0.06;
+      bar.style.transition = "width 0.6s ease";
+      bar.style.width = `${Math.min(_progressFill, 90)}%`;
+    }
+  }, 600);
+}
+
+function hideProgress() {
+  const wrap = document.getElementById("progress-wrap");
+  const bar = document.getElementById("progress-bar-fill");
+  if (_progressTimer) {
+    clearInterval(_progressTimer);
+    _progressTimer = null;
+  }
+  _progressStart = null;
+  if (bar) {
+    bar.style.transition = "width 0.3s ease";
+    bar.style.width = "100%";
+  }
+  // Short delay so user sees 100% before hiding
+  setTimeout(() => {
+    if (wrap) wrap.classList.add("hidden");
+    if (bar) {
+      bar.style.transition = "none";
+      bar.style.width = "0%";
+    }
+    _progressFill = 0;
+  }, 350);
+}
+
 const BASIC_ACID_TESTS = [
   "atomicity",
   "consistency",
@@ -136,6 +192,50 @@ async function apiPost(url, body = null) {
   }
 
   return response.json();
+}
+
+/**
+ * Custom Reset Confirmation Dialog
+ * Returns a promise that resolves to { confirmed: boolean, wipeSchema: boolean }
+ */
+function showResetConfirmation() {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById("reset-dialog");
+    const confirmBtn = document.getElementById("btn-reset-confirm");
+    const cancelBtn = document.getElementById("btn-reset-cancel");
+    const wipeCheck = document.getElementById("wipe-schema-check");
+
+    if (!dialog || !confirmBtn || !cancelBtn) {
+      // Fallback to basic confirm if elements missing
+      const confirmed = window.confirm(
+        "Reset everything? This clears SQL and Mongo data.",
+      );
+      resolve({ confirmed, wipeSchema: false });
+      return;
+    }
+
+    const onConfirm = () => {
+      cleanup();
+      resolve({ confirmed: true, wipeSchema: !!wipeCheck?.checked });
+    };
+
+    const onCancel = () => {
+      cleanup();
+      resolve({ confirmed: false, wipeSchema: false });
+    };
+
+    const cleanup = () => {
+      confirmBtn.removeEventListener("click", onConfirm);
+      cancelBtn.removeEventListener("click", onCancel);
+      dialog.close();
+    };
+
+    confirmBtn.addEventListener("click", onConfirm);
+    cancelBtn.addEventListener("click", onCancel);
+
+    if (wipeCheck) wipeCheck.checked = false;
+    dialog.showModal();
+  });
 }
 
 async function fetchLandingState() {
