@@ -184,12 +184,23 @@ async def get_status(request: Request):
     has_metadata = bool(Path(METADATA_FILE).exists())
     pipeline_state = getattr(request.app.state, "pipeline_state", "fresh")
     pipeline_busy = bool(getattr(request.app.state, "pipeline_busy", False))
+    
+    # Get database connection status
+    try:
+        from src.phase_6.CRUD_operations import sql_available, mongo_available
+        sql_connected = bool(sql_available)
+        mongo_connected = bool(mongo_available)
+    except Exception:
+        sql_connected = False
+        mongo_connected = False
 
     return {
         "pipeline_state": str(pipeline_state) if pipeline_state else "fresh",
         "has_schema": has_schema,
         "has_metadata": has_metadata,
         "pipeline_busy": pipeline_busy,
+        "sql_connected": sql_connected,
+        "mongo_connected": mongo_connected,
     }
 
 @router.get("/api/stats")

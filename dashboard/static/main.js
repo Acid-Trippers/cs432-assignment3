@@ -800,6 +800,17 @@ function renderDashboardStatsBundle(status, stats, pipelineStats) {
   const elDot = document.getElementById("kpi-system-dot");
   if (elDot) elDot.innerHTML = `<span class="status-dot ${sys.variant}"></span><span class="kpi-label">System State</span><span class="kpi-value">${sys.message}</span>`;
   
+  // Update SQL and NoSQL connection indicators
+  const sqlDot = document.getElementById("sql-status-dot");
+  if (sqlDot) {
+    setDotState(sqlDot, status.sql_connected || false);
+  }
+  
+  const mongoDot = document.getElementById("mongo-status-dot");
+  if (mongoDot) {
+    setDotState(mongoDot, status.mongo_connected || false);
+  }
+  
   setKpiCardContent("kpi-total-records", formatInteger(pipelineStats?.total_records), "Total stored records");
   setKpiCardContent("kpi-active-fields", formatInteger(pipelineStats?.active_fields?.total), "Fields actively tracked");
   setKpiCardContent("kpi-data-density", formatPercent(pipelineStats?.data_density), "Average field density");
