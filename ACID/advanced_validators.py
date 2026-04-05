@@ -166,6 +166,8 @@ def multi_record_atomicity_test():
     """
     Test: Insert multiple records in single transaction
     Verify: All succeed or all fail (no partial writes)
+    
+    NOTE: This test cleans up all test records before returning
     """
     try:
         model = _get_main_model()
@@ -178,23 +180,38 @@ def multi_record_atomicity_test():
         # Use timestamp-based record_id to ensure uniqueness
         import time
         base_id = int(time.time() * 1000) % 1000000
+        test_ids = [base_id + i for i in range(5)]
         
         # Try to insert multiple records in one transaction
         try:
-            for i in range(5):
+            for rid in test_ids:
                 session.execute(
-                    text(f"INSERT INTO main_records (record_id) VALUES ({base_id + i})")
+                    text(f"INSERT INTO main_records (record_id) VALUES ({rid})")
                 )
             session.commit()
             after = session.query(model).count()
-            session.close()
             success = (after == before + 5)
+            
+            # CLEANUP: Always delete test records before returning
+            for rid in test_ids:
+                session.execute(text(f"DELETE FROM main_records WHERE record_id = {rid}"))
+            session.commit()
+            
+            session.close()
             return {"test": "multi_record_atomicity", "passed": success, "records_added": after - before}
         except Exception as e:
             session.rollback()
             after = session.query(model).count()
+            
+            # CLEANUP: Delete any test records that might exist
+            try:
+                for rid in test_ids:
+                    session.execute(text(f"DELETE FROM main_records WHERE record_id = {rid}"))
+                session.commit()
+            except:
+                pass
+            
             session.close()
-            # If count unchanged, rollback worked (but transaction failed overall)
             return {"test": "multi_record_atomicity", "passed": False, "error": f"Insert failed: {str(e)[:60]}"}
     except Exception as e:
         return {"test": "multi_record_atomicity", "passed": False, "error": str(e)[:100]}
