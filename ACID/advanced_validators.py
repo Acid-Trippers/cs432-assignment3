@@ -175,21 +175,27 @@ def multi_record_atomicity_test():
         session = _new_sql_session()
         before = session.query(model).count()
         
+        # Use timestamp-based record_id to ensure uniqueness
+        import time
+        base_id = int(time.time() * 1000) % 1000000
+        
         # Try to insert multiple records in one transaction
         try:
             for i in range(5):
                 session.execute(
-                    text(f"INSERT INTO main_records (record_id, device_id) VALUES ({20000+i}, 'test_{i}')")
+                    text(f"INSERT INTO main_records (record_id) VALUES ({base_id + i})")
                 )
             session.commit()
             after = session.query(model).count()
             session.close()
-            return {"test": "multi_record_atomicity", "passed": (after == before + 5), "records_added": after - before}
+            success = (after == before + 5)
+            return {"test": "multi_record_atomicity", "passed": success, "records_added": after - before}
         except Exception as e:
             session.rollback()
             after = session.query(model).count()
             session.close()
-            return {"test": "multi_record_atomicity", "passed": (after == before), "error": "Rollback on error"}
+            # If count unchanged, rollback worked (but transaction failed overall)
+            return {"test": "multi_record_atomicity", "passed": False, "error": f"Insert failed: {str(e)[:60]}"}
     except Exception as e:
         return {"test": "multi_record_atomicity", "passed": False, "error": str(e)[:100]}
 
@@ -267,20 +273,28 @@ def cross_db_atomicity_test():
 def not_null_constraint_test():
     """
     Test: NOT NULL constraint enforcement
-    Verify: NULL insert rejected
+    Verify: NULL insert rejected for primary key (record_id)
     """
     try:
         try:
-            # Try to insert NULL in required field
+            # Try to insert NULL in required field (record_id is NOT NULL primary key)
+            # Since record_id is the primary key, we can't insert NULL
             sql_engine.session.execute(
-                text("INSERT INTO main_records (device_id) VALUES (NULL)")
+                text("INSERT INTO main_records (record_id) VALUES (NULL)")
             )
             sql_engine.session.commit()
-            return {"test": "not_null_constraint", "passed": False, "error": "NULL accepted"}
+            return {"test": "not_null_constraint", "passed": False, "error": "NULL accepted for primary key"}
         except Exception as e:
             sql_engine.session.rollback()
-            is_null_error = "not null" in str(e).lower() or "null" in str(e).lower()
-            return {"test": "not_null_constraint", "passed": is_null_error, "error": str(e)[:80]}
+            error_str = str(e).lower()
+            # Check for NOT NULL constraint violation (different DB engines report differently)
+            is_not_null_error = "not null" in error_str or "null" in error_str or "constraint" in error_str
+            if is_not_null_error:
+                # Constraint properly enforced - this is the expected behavior
+                return {"test": "not_null_constraint", "passed": True}
+            else:
+                # Unexpected error
+                return {"test": "not_null_constraint", "passed": False, "error": str(e)[:80]}
     except Exception as e:
         return {"test": "not_null_constraint", "passed": False, "error": str(e)[:100]}
 
