@@ -62,6 +62,17 @@
             </div>
         </dialog>
     </main>
+    <!-- Progress Bar Overlay -->
+    <div id="progress-wrap" class="progress-overlay hidden" role="status" aria-live="polite">
+        <div class="progress-modal">
+            <p id="progress-label" class="progress-label">Running...</p>
+            <div class="progress-track" aria-hidden="true">
+                <div id="progress-bar-fill" class="progress-bar-fill"></div>
+            </div>
+            <p class="progress-meta">Elapsed: <span id="progress-elapsed">0s</span></p>
+        </div>
+    </div>
+
     <script src="/static/main.js"></script>
 </body>
 </html>

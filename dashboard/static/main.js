@@ -4,6 +4,56 @@ let lastQueryResult = null;
 let currentQueryPage = 1;
 const PAGE_SIZE = 100;
 
+let _progressTimer = null;
+let _progressStart = null;
+// Simulated fill: creeps toward 90% while running, jumps to 100% on hideProgress
+let _progressFill = 0;
+
+function showProgress(label = "Running...") {
+	const wrap = document.getElementById("progress-wrap");
+	const labelEl = document.getElementById("progress-label");
+	const elapsed = document.getElementById("progress-elapsed");
+	const bar = document.getElementById("progress-bar-fill");
+	if (!wrap) return;
+	if (labelEl) labelEl.textContent = label;
+	if (elapsed) elapsed.textContent = "0s";
+	_progressFill = 0;
+	if (bar) {
+		bar.style.transition = "none";
+		bar.style.width = "0%";
+	}
+	wrap.classList.remove("hidden");
+	_progressStart = Date.now();
+	if (_progressTimer) clearInterval(_progressTimer);
+	_progressTimer = setInterval(() => {
+		const secs = Math.floor((Date.now() - _progressStart) / 1000);
+		if (elapsed) elapsed.textContent = `${secs}s`;
+		// Ease fill toward 90%: slows down asymptotically
+		if (bar) {
+			_progressFill = _progressFill + (90 - _progressFill) * 0.06;
+			bar.style.transition = "width 0.6s ease";
+			bar.style.width = `${Math.min(_progressFill, 90)}%`;
+		}
+	}, 600);
+}
+
+function hideProgress() {
+	const wrap = document.getElementById("progress-wrap");
+	const bar = document.getElementById("progress-bar-fill");
+	if (_progressTimer) { clearInterval(_progressTimer); _progressTimer = null; }
+	_progressStart = null;
+	if (bar) {
+		bar.style.transition = "width 0.3s ease";
+		bar.style.width = "100%";
+	}
+	// Short delay so user sees 100% before hiding
+	setTimeout(() => {
+		if (wrap) wrap.classList.add("hidden");
+		if (bar) { bar.style.transition = "none"; bar.style.width = "0%"; }
+		_progressFill = 0;
+	}, 350);
+}
+
 const BASIC_ACID_TESTS = ["atomicity", "consistency", "isolation", "durability"];
 
 const QUERY_TEMPLATES = {
@@ -290,13 +340,16 @@ function attachLandingHandlers() {
 			clearFeedback(feedback);
 			const count = Math.max(Number(initCount?.value || 1000), 1);
 			setButtonsDisabled(true);
+			showProgress(`Initialising ${count} records...`);
 			setFeedback(feedback, "Initialise started. Waiting for completion...");
 
 			try {
 				await apiPost(`/api/pipeline/initialise?count=${count}`);
+				hideProgress();
 				setFeedback(feedback, "Initialise completed.");
 				await refreshLanding();
 			} catch (error) {
+				hideProgress();
 				setFeedback(feedback, String(error.message || error), true);
 				await refreshLanding();
 			} finally {
@@ -313,12 +366,15 @@ function attachLandingHandlers() {
 			if (!confirmed) return;
 
 			setButtonsDisabled(true);
+			showProgress("Resetting environment...");
 			setFeedback(feedback, "Reset started...", false);
 			try {
 				await apiPost(`/api/pipeline/reset?wipe_schema=${wipeSchema}`);
+				hideProgress();
 				setFeedback(feedback, "Reset completed.");
 				await refreshLanding();
 			} catch (error) {
+				hideProgress();
 				setFeedback(feedback, String(error.message || error), true);
 				await refreshLanding();
 			} finally {
@@ -379,12 +435,15 @@ function attachSetupHandlers() {
 			clearFeedback(message);
 			const count = Math.max(Number(initCount?.value || 1000), 1);
 			initBtn.disabled = true;
+			showProgress(`Initialising ${count} records...`);
 			setFeedback(message, "Initialise started. Redirecting to landing on completion...");
 
 			try {
 				await apiPost(`/api/pipeline/initialise?count=${count}`);
+				hideProgress();
 				window.location.href = "/";
 			} catch (error) {
+				hideProgress();
 				setFeedback(message, String(error.message || error), true);
 				initBtn.disabled = false;
 			}
@@ -844,14 +903,17 @@ function attachDashboardHandlers() {
 			clearFeedback(feedback);
 			const count = Math.max(Number(fetchCount?.value || 100), 1);
 			setDashboardControlsDisabled(true);
+			showProgress(`Fetching ${count} records...`);
 			setFeedback(feedback, "Fetch started. Waiting for completion...", false);
 
 			try {
 				await apiPost(`/api/pipeline/fetch?count=${count}`);
+				hideProgress();
 				setFeedback(feedback, `Fetch completed for ${count} records.`, false);
 				await refreshDashboardStatus();
 				await refreshDashboardStats();
 			} catch (error) {
+				hideProgress();
 				setFeedback(feedback, String(error.message || error), true);
 			} finally {
 				await refreshDashboardStatus();
@@ -866,24 +928,25 @@ function attachDashboardHandlers() {
 			const { confirmed, wipeSchema } = await showResetConfirmation();
 			if (!confirmed) return;
 
-			// Stop polling stats while resetting to minimize connection interference
 			if (dashboardStatsTimer) {
 				clearInterval(dashboardStatsTimer);
 				dashboardStatsTimer = null;
 			}
 
 			setDashboardControlsDisabled(true);
+			showProgress("Resetting environment...");
 			setFeedback(feedback, "Reset started. This may take a few seconds...", false);
 
 			try {
 				await apiPost(`/api/pipeline/reset?wipe_schema=${wipeSchema}`);
+				hideProgress();
 				setFeedback(feedback, "Reset completed. Redirecting to landing...", false);
 				setTimeout(() => {
 					window.location.href = "/";
 				}, 1000);
 			} catch (error) {
+				hideProgress();
 				setFeedback(feedback, String(error.message || error), true);
-				// Resume status tracking if it failed
 				await refreshDashboardStatus();
 			}
 		});
